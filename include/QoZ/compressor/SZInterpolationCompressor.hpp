@@ -219,14 +219,21 @@ namespace QoZ {
         // compress given the error bound
         uchar *compress( Config &conf, T *data, size_t &compressed_size,int tuning,int start_level,int end_level=0) {
             //tuning 0: normal compress 1:tuning to return qbins and psnr 2: tuning to return prediction loss
-            Timer timer;
-            timer.start();
+            //Timer timer;
+            //timer.start();
 
             if(conf.qoi>0 and conf.use_global_eb){
                 check_qoi = true;
+                
                 if (qoi == nullptr or qoi->id != conf.qoi)
                     qoi = QoZ::GetQOI<T, N>(conf);
             }
+            else{
+                check_qoi = false;
+            }
+
+            //if(check_qoi)
+             //   std::cout<<"checking qoi"<<std::endl;
 
             
             
@@ -544,8 +551,8 @@ namespace QoZ {
                 return buffer;
             }
 
-            if(conf.verbose)
-                timer.stop("prediction");//can remove later
+            //if(conf.verbose)
+             //   timer.stop("prediction");//can remove later
             
             //timer.start();
             assert(quant_inds.size() == num_elements);
@@ -826,12 +833,14 @@ namespace QoZ {
                  auto qidx = quantizer.quantize_and_overwrite(d, pred);
 
     
-                 if(check_qoi and !qoi->check_compliance(ori,d)){
+                 if(check_qoi ){
                     // std::cout << "not compliant" << std::endl;
                     // save as unpredictable
-                    d = ori;
-                    qidx = 0;
-                    quantizer.insert_unpred(d);
+                    if(!qoi->check_compliance(ori,d)){
+                        d = ori;
+                        qidx = 0;
+                        quantizer.insert_unpred(d);
+                    }
                  }
                  quant_inds.push_back(qidx);
                  return 0;
@@ -841,12 +850,14 @@ namespace QoZ {
                 auto qidx = quantizer.quantize_and_overwrite(d, pred);
 
     
-                 if(check_qoi and !qoi->check_compliance(ori,d)){
+                 if(check_qoi ){
                     // std::cout << "not compliant" << std::endl;
                     // save as unpredictable
-                    d = ori;
-                    qidx = 0;
-                    quantizer.insert_unpred(d);
+                    if(!qoi->check_compliance(ori,d)){
+                        d = ori;
+                        qidx = 0;
+                        quantizer.insert_unpred(d);
+                    }
                  }
                  quant_inds.push_back(qidx);
                 return (d-ori)*(d-ori);

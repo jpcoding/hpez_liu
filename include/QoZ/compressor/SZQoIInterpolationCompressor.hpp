@@ -228,8 +228,8 @@ namespace QoZ {
         uchar *compress( Config &conf, T *data, size_t &compressed_size,int tuning,int start_level,int end_level=0) {
             //tuning 0: normal compress 1:tuning to return qbins and psnr 2: tuning to return prediction loss
             qoi_id = conf.qoi;
-            Timer timer;
-            timer.start();
+            //Timer timer;
+            //timer.start();
             
             std::copy_n(conf.dims.begin(), N, global_dimensions.begin());
             blocksize = conf.interpBlockSize;
@@ -254,7 +254,7 @@ namespace QoZ {
 
             quant_inds = std::vector<int>(num_elements * 2);//eb + data
             if(tuning==0)
-                ebs = conf.ebs;
+                ebs = conf.ebs.data();
             size_t interp_compressed_size = 0;
             double eb = qoi->get_global_eb();
             //std::cout<<"setting eb "<<eb<<std::endl;
@@ -557,8 +557,8 @@ namespace QoZ {
                 return buffer;
             }
 
-            if(conf.verbose)
-                timer.stop("prediction");//can remove later
+            //if(conf.verbose)
+             //   timer.stop("prediction");//can remove later
 
             
             //timer.start();
@@ -7421,7 +7421,7 @@ namespace QoZ {
        // double anchor_threshold=0.0;//temp for "adaptive anchor stride";
 
         std::shared_ptr<concepts::QoIInterface<T, N>> qoi;
-        std::vector<double> ebs;
+        double *ebs;
 
         int qoi_id;
 

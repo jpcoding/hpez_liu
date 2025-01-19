@@ -50,7 +50,7 @@ namespace QoZ {
         }
 
         bool check_compliance(T data, T dec_data, bool verbose=false) const {
-            return (fabs(data*data*data - dec_data*dec_data*dec_data) < tolerance);
+            return (fabs(data*data*data - dec_data*dec_data*dec_data) <= tolerance);
         }
 
         void update_tolerance(T data, T dec_data){}
@@ -75,8 +75,8 @@ namespace QoZ {
 
         } 
 
-        std::string get_expression() const{
-            return "x^3";
+        std::string get_expression(const std::string var="x") const{
+            return var+"^3";
         }
 
         void pre_compute(const T * data){}

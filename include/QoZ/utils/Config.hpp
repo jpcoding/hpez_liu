@@ -6,6 +6,8 @@
 #include <vector>
 #include <numeric>
 //#include <memory>
+#include <cstdlib>
+#include <array>
 #include "QoZ/def.hpp"
 //#include "QoZ/qoi/QoI.hpp"
 #include "MemoryUtil.hpp"
@@ -267,6 +269,7 @@ namespace QoZ {
             qoiLogBase = cfg.GetReal("QoISettings", "qoiLogBase", qoiLogBase);
             qoiEBBase = cfg.GetReal("QoISettings", "qoiEBBase", qoiEBBase);
             qoiEBLogBase = cfg.GetReal("QoISettings", "qoiEBLogBase", qoiEBLogBase);
+            confidence = cfg.GetReal("QoISettings", "confidence", confidence);
 
             qoiQuantbinCnt = cfg.GetInteger("QoISettings", "qoiQuantbinCnt", qoiQuantbinCnt);
             qoiRegionSize = cfg.GetInteger("QoISettings", "qoiRegionSize", qoiRegionSize);
@@ -507,7 +510,7 @@ namespace QoZ {
         //std::vector<double> lorenzo1_coeffs;
         //std::vector<double> lorenzo2_coeffs;
         bool verbose=1;
-        int QoZ=4;
+        int QoZ=3;
         bool pdTuningRealComp=0;
         int pdTuningAbConf=0;
         //double pdAlpha=-1;
@@ -570,14 +573,17 @@ namespace QoZ {
         bool isolated = false;
         //bool regionalQoI = false;
         std::vector<double> ebs;
-        double regionalQoIeb;
-        double error_std_rate = 1.732;
+        double regionalQoIeb = 0.0;
+        double error_std_rate = 3.0;
+        double confidence = 0.999;
         int tol_estimation = 0; //0:Hoeffdin  1: Bernstein
         bool early_termination = false;
 
-        int qoiRegionMode = 0; //0:no region 1: average 1:laplacian 2: gradient 
+        int qoiRegionMode = 0; //0:no region 1: average 2:laplacian 3: gradient 
 
         bool use_global_eb = false;
+        double qoi_lin_A = 1.0;
+        double qoi_lin_B = 0.0;
 
         //std::shared_ptr<QoZ::concepts::QoIInterface<T, N>> qoiPtr = nullptr;
 

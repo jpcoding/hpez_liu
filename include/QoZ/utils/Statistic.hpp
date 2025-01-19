@@ -3,8 +3,9 @@
 #define SZ_STATISTIC_HPP
 
 #include "Config.hpp"
+#include "Timer.hpp"
 #include "QoZ/qoi/QoIInfo.hpp"
-
+#include <algorithm>
 namespace QoZ {
     template<class T>
     T data_range(const T *data, size_t num) {
@@ -114,7 +115,7 @@ namespace QoZ {
     }
 
     template<typename Type>
-    void verify(Type *ori_data, Type *data, size_t num_elements, double &psnr, double &nrmse) {
+    void verify(Type *ori_data, Type *data, size_t num_elements, double &psnr, double &nrmse, bool verbose = true) {
         size_t i = 0;
         double Max = ori_data[0];
         double Min = ori_data[0];
@@ -166,15 +167,16 @@ namespace QoZ {
 
         double normErr = sqrt(sum);
         double normErr_norm = normErr / sqrt(l2sum);
-
-        printf("Min=%.20G, Max=%.20G, range=%.20G\n", Min, Max, range);
-        printf("Max absolute error = %.2G\n", diffMax);
-        printf("Max relative error = %.2G\n", diffMax / (Max - Min));
-        printf("Max pw relative error = %.2G\n", maxpw_relerr);
-        printf("PSNR = %f, NRMSE= %.10G\n", psnr, nrmse);
-        printf("normError = %f, normErr_norm = %f\n", normErr, normErr_norm);
-        printf("acEff=%f\n", acEff);
-//        printf("errAutoCorr=%.10f\n", autocorrelation1DLag1<double>(diff, num_elements, diff_sum / num_elements));
+        if(verbose){
+            printf("Min=%.20G, Max=%.20G, range=%.20G\n", Min, Max, range);
+            printf("Max absolute error = %.2G\n", diffMax);
+            printf("Max relative error = %.2G\n", diffMax / (Max - Min));
+            printf("Max pw relative error = %.2G\n", maxpw_relerr);
+            printf("PSNR = %f, NRMSE= %.10G\n", psnr, nrmse);
+            printf("normError = %f, normErr_norm = %f\n", normErr, normErr_norm);
+            printf("acEff=%f\n", acEff);
+    //        printf("errAutoCorr=%.10f\n", autocorrelation1DLag1<double>(diff, num_elements, diff_sum / num_elements));
+        }
         free(diff);
     }
 
@@ -204,13 +206,17 @@ namespace QoZ {
                 T const * data_z_pos = data_y_pos;
                 for(size_t k=0; k<num_block_3; k++){
                     size_t size_3 = (k == num_block_3 - 1) ? n3 - k * block_size : block_size;
+                    //if((size_1!=1 and size_1<block_size) or (size_2!=1 and size_2<block_size) or size_3<block_size)
+                    //    continue;
                     T const * cur_data_pos = data_z_pos;
                     size_t n_block_elements = size_1 * size_2 * size_3;
                     double sum = 0;
                     for(size_t ii=0; ii<size_1; ii++){
                         for(size_t jj=0; jj<size_2; jj++){
                             for(size_t kk=0; kk<size_3; kk++){
-                                sum += *cur_data_pos;
+                                auto val = *cur_data_pos;
+                                if(!std::isnan(val) and !std::isinf(val))
+                                    sum += val;
                                 cur_data_pos ++;
                             }
                             cur_data_pos += dim1_offset - size_3;
@@ -218,6 +224,7 @@ namespace QoZ {
                         cur_data_pos += dim0_offset - size_2 * dim1_offset;
                     }
                     aggregated.push_back(sum / n_block_elements);
+                  
                     data_z_pos += size_3;
                 }
                 data_y_pos += dim1_offset * size_2;
@@ -226,7 +233,7 @@ namespace QoZ {
         }    
         return aggregated;
     }
-
+    /*
     template <class T>
     std::vector<T> compute_square_average(T const * data, uint32_t n1, uint32_t n2, uint32_t n3, int block_size){
         uint32_t dim0_offset = n2 * n3;
@@ -245,8 +252,8 @@ namespace QoZ {
                 T const * data_z_pos = data_y_pos;
                 for(size_t k=0; k<num_block_3; k++){
                     size_t size_3 = (k == num_block_3 - 1) ? n3 - k * block_size : block_size;
-                    if(size_1<num_block_1 or size_2<num_block_2 or size_3<num_block_3)
-                        continue;
+                    //if((size_1!=1 and size_1<block_size) or (size_2!=1 and size_2<block_size) or size_3<block_size)
+                    //    continue;
                     T const * cur_data_pos = data_z_pos;
                     size_t n_block_elements = size_1 * size_2 * size_3;
                     double sum = 0;
@@ -269,6 +276,7 @@ namespace QoZ {
         }    
         return aggregated;
     }
+    */
 
 
     template <class T>
@@ -360,8 +368,18 @@ namespace QoZ {
         else{
             auto average = compute_average(data, n1, n2, n3, block_size);
             auto average_dec = compute_average(dec_data, n1, n2, n3, block_size);
+            auto minmax = std::minmax_element(average.begin(),average.end());
+            value_range = *minmax.second - *minmax.first;
+            if (value_range == 0)
+                value_range = 1.0;
             auto error = evaluate_L_inf(average.data(), average_dec.data(), average.size(), false, false);
+            std::cout << "QoI average with block size " << block_size << ": Min = " << *minmax.first << ", Max = " << *minmax.second<<", Range = "<< value_range << std::endl;
             std::cout << "L^infinity error of average with block size " << block_size << " = " << error << ", relative error = " << error * 1.0 / value_range << std::endl;
+
+            double psnr, nrmse;
+
+            verify<double>(average.data(), average_dec.data(), average.size(), psnr, nrmse, false);
+            printf("Blocked QoI PSNR = %.6G, NRMSE = %.6G\n", psnr, nrmse);
 
             //auto square_average = compute_square_average(data, n1, n2, n3, block_size);
             //auto square_average_dec = compute_square_average(dec_data, n1, n2, n3, block_size);
@@ -553,7 +571,6 @@ namespace QoZ {
         verify(ori_data_T, data_T, num_elements, psnr, nrmse);
         
 
-
         if(conf.qoi == 0)
             return;
         std::vector<double> ori_data(ori_data_T,ori_data_T+num_elements);
@@ -567,7 +584,7 @@ namespace QoZ {
         double max_qoi = -std::numeric_limits<double>::max();
         double min_qoi = std::numeric_limits<double>::max();
 
-
+        QoZ::Timer timer(true);
         for(size_t i=0; i<num_elements; i++){
 
             auto cur_ori_qoi = qoi->eval(ori_data[i]);
@@ -596,6 +613,8 @@ namespace QoZ {
 
 
         }
+        timer.stop("QoI validation");
+
 
         if (max_qoi == min_qoi){
             max_qoi = 1.0;
@@ -606,22 +625,169 @@ namespace QoZ {
         std::cout<<"QoI function: "<<qoi->get_expression()<<std::endl;
         printf("Max qoi = %.6G, min qoi = %.6G, qoi range = %.6G\n", max_qoi, min_qoi, (max_qoi - min_qoi));
         printf("Max qoi error = %.6G, relative qoi error = %.6G\n", max_qoi_diff, max_qoi_diff / (max_qoi - min_qoi));
+
+        double q_psnr, q_nrmse;
+
+        verify<double>(ori_data.data(), data.data(), num_elements, q_psnr, q_nrmse,false);
+
+        printf("QoI PSNR = %.6G, QoI NRMSE = %.6G\n", q_psnr, q_nrmse);
+
+
        
         if (blockSize>1){
             
             printf("Regional qoi average:\n");
+            timer.start();
             if(dims.size() == 2) evaluate_average(ori_data.data(), data.data(), max_qoi - min_qoi, 1, dims[0], dims[1], blockSize);
             else if(dims.size() == 3) evaluate_average(ori_data.data(), data.data(), max_qoi - min_qoi, dims[0], dims[1], dims[2], blockSize);
+            timer.stop("RegionalQoI validation");
         }
 
         if (dims.size() == 3){
+            timer.start();
             printf("QoI Lapacian: %.6G\n",compute_3d_laplacian_max_err<double>(ori_data.data(), data.data(), dims[0], dims[1], dims[2]));
             printf("QoI Gradient Length: %.6G\n",compute_3d_gradient_length_max_err<double>(ori_data.data(), data.data(), dims[0], dims[1], dims[2]));
+            timer.stop("Lap+grad validation");
         }
 
 
 
     }
+
+    template<typename T, uint N>
+    size_t compute_qoi_average_and_correct(T * ori_data, T * data, uint32_t n1, uint32_t n2, uint32_t n3, int block_size, std::shared_ptr<concepts::QoIInterface<T, N> > qoi, double tol){
+        uint32_t dim0_offset = n2 * n3;
+        uint32_t dim1_offset = n3;
+        uint32_t num_block_1 = (n1 - 1) / block_size + 1;
+        uint32_t num_block_2 = (n2 - 1) / block_size + 1;
+        uint32_t num_block_3 = (n3 - 1) / block_size + 1;
+        std::vector<T> aggregated = std::vector<T>();
+        uint32_t index = 0;
+        T * data_x_pos = data;
+        T * ori_data_x_pos = ori_data;
+        size_t corr_count = 0;
+        for(size_t i=0; i<num_block_1; i++){
+            size_t size_1 = (i == num_block_1 - 1) ? n1 - i * block_size : block_size;
+            T * data_y_pos = data_x_pos;
+            T * ori_data_y_pos = ori_data_x_pos;
+            for(size_t j=0; j<num_block_2; j++){
+                size_t size_2 = (j == num_block_2 - 1) ? n2 - j * block_size : block_size;
+                T * data_z_pos = data_y_pos;
+                T * ori_data_z_pos = ori_data_y_pos;
+                for(size_t k=0; k<num_block_3; k++){
+                    size_t size_3 = (k == num_block_3 - 1) ? n3 - k * block_size : block_size;
+                    //if((size_1!=1 and size_1<block_size) or (size_2!=1 and size_2<block_size) or size_3<block_size){
+                    if(false){
+                        T * cur_ori_data_pos = ori_data_z_pos;
+                        for(size_t ii=0; ii<size_1; ii++){
+                            for(size_t jj=0; jj<size_2; jj++){
+                                for(size_t kk=0; kk<size_3; kk++){
+                                    *cur_ori_data_pos = 0;
+                                    cur_ori_data_pos ++;
+                                }
+                                cur_ori_data_pos += dim1_offset - size_3;
+                            }
+                            cur_ori_data_pos += dim0_offset - size_2 * dim1_offset;
+                        }
+                    }
+                    else{
+                        T * cur_data_pos = data_z_pos;
+                        T * cur_ori_data_pos = ori_data_z_pos;
+                        size_t n_block_elements = size_1 * size_2 * size_3;
+                        double ave = 0;
+                        double ori_ave =0;
+                        std::vector<T>ori_qoi_vals;
+                        std::vector<T>qoi_vals;
+                        for(size_t ii=0; ii<size_1; ii++){
+                            for(size_t jj=0; jj<size_2; jj++){
+                                for(size_t kk=0; kk<size_3; kk++){
+                                    double q = qoi->eval(*cur_data_pos);
+                                    if(std::isinf(q) or std::isnan(q))
+                                        q = 0.0;
+                                    ave += q;
+                                    qoi_vals.push_back(q);
+                                    cur_data_pos ++;
+                                    double oq = qoi->eval(*cur_ori_data_pos);
+                                    if(std::isinf(oq) or std::isnan(oq))
+                                        oq = 0.0;
+                                    ori_ave += oq;
+                                    ori_qoi_vals.push_back(oq);
+                                    cur_ori_data_pos ++;
+                                }
+                                cur_data_pos += dim1_offset - size_3;
+                                cur_ori_data_pos += dim1_offset - size_3;
+                            }
+                            cur_data_pos += dim0_offset - size_2 * dim1_offset;
+                            cur_ori_data_pos += dim0_offset - size_2 * dim1_offset;
+                        }
+                        ave /= n_block_elements;
+                        ori_ave /= n_block_elements;
+                        double err = ori_ave-ave;
+                        if(fabs(err)> tol){
+                            
+                            corr_count++;
+                            T * cur_data_pos = data_z_pos;
+                            T * cur_ori_data_pos = ori_data_z_pos;
+                            bool fixing=true;
+                            size_t local_idx = 0;
+                            for(size_t ii=0; ii<size_1; ii++){
+                                for(size_t jj=0; jj<size_2; jj++){
+                                    for(size_t kk=0; kk<size_3; kk++){
+                                        auto qoi_err = (ori_qoi_vals[local_idx]-qoi_vals[local_idx]);
+                                        if(fixing and qoi_err!=0){
+                                           
+                                            T offset = *cur_ori_data_pos - *cur_data_pos;
+
+                                            *cur_data_pos = *cur_ori_data_pos;
+                                            *cur_ori_data_pos = offset;
+                                            err -= qoi_err/n_block_elements;
+                                            if (fabs(err)<=tol)
+                                                fixing=false;
+
+                                        }
+                                        else{
+                                            *cur_ori_data_pos = 0;
+                                        }
+                                        local_idx++;
+                                        cur_data_pos ++;
+                                        cur_ori_data_pos ++;
+
+                                    }
+                                    cur_data_pos += dim1_offset - size_3;
+                                    cur_ori_data_pos += dim1_offset - size_3;
+                                }
+                                cur_data_pos += dim0_offset - size_2 * dim1_offset;
+                                cur_ori_data_pos += dim0_offset - size_2 * dim1_offset;
+                            }
+                        }
+                        else{
+                            T * cur_ori_data_pos = ori_data_z_pos;
+                            for(size_t ii=0; ii<size_1; ii++){
+                                for(size_t jj=0; jj<size_2; jj++){
+                                    for(size_t kk=0; kk<size_3; kk++){
+                                        *cur_ori_data_pos = 0;
+                                        cur_ori_data_pos ++;
+                                    }
+                                    cur_ori_data_pos += dim1_offset - size_3;
+                                }
+                                cur_ori_data_pos += dim0_offset - size_2 * dim1_offset;
+                            }
+                        }
+                    }
+                    data_z_pos += size_3;
+                    ori_data_z_pos += size_3;
+                }
+                data_y_pos += dim1_offset * size_2;
+                ori_data_y_pos += dim1_offset * size_2;
+            }
+            data_x_pos += dim0_offset * size_1;
+            ori_data_x_pos += dim0_offset * size_1;
+        }    
+        return corr_count;
+    }
+
+
+
 
 
 };

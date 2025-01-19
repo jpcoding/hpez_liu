@@ -118,23 +118,24 @@ make_qoi_lorenzo_compressor(const QoZ::Config &conf, std::shared_ptr<QoZ::concep
 }
 
 template<class T, QoZ::uint N>
-char *SZ_compress_LorenzoReg(QoZ::Config &conf, T *data, size_t &outSize) {
+char *SZ_compress_LorenzoReg(QoZ::Config &conf, T *data, size_t &outSize, bool tuning=false) {
 
     assert(N == conf.N);
     assert(conf.cmprAlgo == QoZ::ALGO_LORENZO_REG);
     //QoZ::calAbsErrorBound(conf, data);
-
+    //std::cout<<"ABSEB "<<conf.absErrorBound<<std::endl;
     char *cmpData;
 
-    if(conf.qoi > 0){
+    if(conf.qoi > 0 and !conf.use_global_eb){
         //std::cout << "absErrorBound = " << conf.absErrorBound << std::endl;
         //std::cout << conf.qoi << " " << conf.qoiEB << " " << conf.qoiEBBase << " " << conf.qoiEBLogBase << " " << conf.qoiQuantbinCnt << " " << conf.qoiRegionSize << std::endl;
         auto quantizer = QoZ::VariableEBLinearQuantizer<T, T>(conf.quantbinCnt / 2);
-        auto quantizer_eb = QoZ::EBLogQuantizer<T>(conf.qoiEBBase, conf.qoiEBLogBase, conf.qoiQuantbinCnt / 2);
+        auto quantizer_eb = QoZ::EBLogQuantizer<T>(conf.qoiEBBase, conf.qoiEBLogBase, conf.qoiQuantbinCnt / 2, conf.absErrorBound);
         auto qoi = QoZ::GetQOI<T, N>(conf);
         if(conf.qoi == 3){
             conf.blockSize = conf.qoiRegionSize;
         }
+        //std::cout<<"1"<<std::e
         auto sz = make_qoi_lorenzo_compressor(conf, qoi, quantizer, quantizer_eb);
         cmpData = (char *) sz->compress(conf, data, outSize);
         return cmpData;
@@ -143,7 +144,7 @@ char *SZ_compress_LorenzoReg(QoZ::Config &conf, T *data, size_t &outSize) {
 
     auto quantizer = QoZ::LinearQuantizer<T>(conf.absErrorBound, conf.quantbinCnt / 2);
 
-    if (N == 3 and !conf.regression2 ) {
+    if (N == 3 and !conf.regression2 and conf.qoi==0) {
         // use fast version for 3D
         auto sz = QoZ::make_sz_general_compressor<T, N>(QoZ::make_sz_fast_frontend<T, N>(conf, quantizer), QoZ::HuffmanEncoder<int>(),
                                                        QoZ::Lossless_zstd());
@@ -152,21 +153,26 @@ char *SZ_compress_LorenzoReg(QoZ::Config &conf, T *data, size_t &outSize) {
         auto sz = make_lorenzo_regression_compressor<T, N>(conf, quantizer, QoZ::HuffmanEncoder<int>(), QoZ::Lossless_zstd());
         //std::cout<<"lor1"<<std::endl;
         cmpData = (char *) sz->compress(conf, data, outSize);
+        if(conf.qoi>0 and !tuning)
+            conf.qoi = 99;
     }
+    
     return cmpData;
 }
 
 
 template<class T, QoZ::uint N>
 void SZ_decompress_LorenzoReg(const QoZ::Config &theconf, char *cmpData, size_t cmpSize, T *decData) {
+
     QoZ::Config conf(theconf);
+    //std::cout<<"ABSEB "<<conf.absErrorBound<<std::endl;
     assert(conf.cmprAlgo == QoZ::ALGO_LORENZO_REG);
     QoZ::uchar const *cmpDataPos = (QoZ::uchar *) cmpData;
 
-    if(conf.qoi > 0){
+    if(conf.qoi > 0 and conf.qoi != 99){
         //std::cout << conf.qoi << " " << conf.qoiEB << " " << conf.qoiEBBase << " " << conf.qoiEBLogBase << " " << conf.qoiQuantbinCnt << " " << conf.qoiRegionSize << std::endl;
         auto quantizer = QoZ::VariableEBLinearQuantizer<T, T>(conf.quantbinCnt / 2);
-        auto quantizer_eb = QoZ::EBLogQuantizer<T>(conf.qoiEBBase, conf.qoiEBLogBase, conf.qoiQuantbinCnt / 2);
+        auto quantizer_eb = QoZ::EBLogQuantizer<T>(conf.qoiEBBase, conf.qoiEBLogBase, conf.qoiQuantbinCnt / 2, conf.absErrorBound);
         auto qoi = QoZ::GetQOI<T, N>(conf);
         auto sz = make_qoi_lorenzo_compressor(conf, qoi, quantizer, quantizer_eb);
         sz->decompress(cmpDataPos, cmpSize, decData);
@@ -177,7 +183,7 @@ void SZ_decompress_LorenzoReg(const QoZ::Config &theconf, char *cmpData, size_t 
     QoZ::LinearQuantizer<T> quantizer;
   
         
-    if (N == 3 and !conf.regression2) {
+    if (N == 3 and !conf.regression2 and conf.qoi !=99) {
         // use fast version for 3D
         auto sz = QoZ::make_sz_general_compressor<T, N>(QoZ::make_sz_fast_frontend<T, N>(conf, quantizer),
                                                        QoZ::HuffmanEncoder<int>(), QoZ::Lossless_zstd());

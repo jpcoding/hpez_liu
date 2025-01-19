@@ -112,6 +112,12 @@ char *SZ_compress_Interp(QoZ::Config &conf, T *data, size_t &outSize) {
         QoI_tuning<T,N>(conf, data);
         conf.qoi_tuned = true;
     }
+
+    std::vector<T> ori_data;
+    bool global_correction = conf.qoi > 0 and conf.qoiRegionMode==1;
+    if(global_correction){
+        ori_data = std::vector<T>(data,data+conf.num);
+    }
     if (conf.qoi>0 and !conf.use_global_eb){
         
         auto qoi = QoZ::GetQOI<T, N>(conf);//todo: bring qoi to conf to avoid duplicated initialization.
@@ -122,8 +128,67 @@ char *SZ_compress_Interp(QoZ::Config &conf, T *data, size_t &outSize) {
 
         char *cmpData = (char *) sz.compress(conf, data, outSize);
 
+        conf.ebs.clear();
+        conf.ebs.shrink_to_fit();
+
          //double incall_time = timer.stop();
         //std::cout << "incall time = " << incall_time << "s" << std::endl;
+        size_t offset_size=0;
+
+        if(global_correction){
+            size_t corr_count = 0;
+            if(N==3){
+                corr_count=QoZ::compute_qoi_average_and_correct<T,N>(ori_data.data(), data, conf.dims[0], conf.dims[1], conf.dims[2], conf.qoiRegionSize, qoi, conf.regionalQoIeb);
+
+            }
+            else if (N==2){
+                corr_count=QoZ::compute_qoi_average_and_correct<T,N>(ori_data.data(), data, 1, conf.dims[0], conf.dims[1], conf.qoiRegionSize, qoi, conf.regionalQoIeb);
+
+            }
+            else{//N==1
+                corr_count=QoZ::compute_qoi_average_and_correct<T,N>(ori_data.data(), data, 1, 1, conf.dims[0], conf.qoiRegionSize, qoi, conf.regionalQoIeb);
+
+            }
+            if(conf.verbose)
+                std::cout<<"Global correction done. "<<corr_count<<" blocks corrected."<<std::endl;
+            
+
+            auto zstd = QoZ::Lossless_zstd();
+            
+            
+            QoZ::uchar *lossless_data = zstd.compress(reinterpret_cast< QoZ::uchar *>(ori_data.data()),
+                                                         conf.num*sizeof(T),
+                                                         offset_size);
+            //std::cout<<offset_size<<std::endl;
+            //ori_data.clear();
+            //std::cout<<"001"<<std::endl;
+            size_t newSize = outSize + offset_size + QoZ::Config::size_est()  + 100;
+            char * newcmpData = new char[newSize];
+            memcpy(newcmpData,cmpData,outSize);
+            delete [] cmpData;
+            memcpy(newcmpData+outSize,lossless_data,offset_size);
+            
+            outSize+=offset_size;
+            //std::cout<<offset_size<<" "<<outSizes[i]<<std::endl;
+            delete []lossless_data;
+            //lossless_data = NULL;
+            memcpy(newcmpData+outSize,&offset_size,sizeof(size_t));
+            //
+            outSize+=sizeof(size_t);
+
+            cmpData = newcmpData;
+                
+            
+        }
+        else{
+            offset_size=0;
+            
+            memcpy(cmpData+outSize,&offset_size,sizeof(size_t));
+            outSize+=sizeof(size_t);
+            
+
+        }
+
         return cmpData;
 
     }
@@ -138,34 +203,134 @@ char *SZ_compress_Interp(QoZ::Config &conf, T *data, size_t &outSize) {
 
         //timer.start();
         char *cmpData = (char *) sz.compress(conf, data, outSize);
+
+        size_t offset_size=0;
+
+        if(global_correction){
+            auto qoi = QoZ::GetQOI<T, N>(conf);//todo: bring qoi to conf to avoid duplicated initialization.
+            size_t corr_count = 0;
+            if(N==3){
+                corr_count=QoZ::compute_qoi_average_and_correct<T,N>(ori_data.data(), data, conf.dims[0], conf.dims[1], conf.dims[2], conf.qoiRegionSize, qoi, conf.regionalQoIeb);
+
+            }
+            else if (N==2){
+                corr_count=QoZ::compute_qoi_average_and_correct<T,N>(ori_data.data(), data, 1, conf.dims[0], conf.dims[1], conf.qoiRegionSize, qoi, conf.regionalQoIeb);
+
+            }
+            else{//N==1
+                corr_count=QoZ::compute_qoi_average_and_correct<T,N>(ori_data.data(), data, 1, 1, conf.dims[0], conf.qoiRegionSize, qoi, conf.regionalQoIeb);
+
+            }
+            if(conf.verbose)
+                std::cout<<"Global correction done. "<<corr_count<<" blocks corrected."<<std::endl;
+            
+
+            auto zstd = QoZ::Lossless_zstd();
+            
+            
+            QoZ::uchar *lossless_data = zstd.compress(reinterpret_cast< QoZ::uchar *>(ori_data.data()),
+                                                         conf.num*sizeof(T),
+                                                         offset_size);
+            //std::cout<<offset_size<<std::endl;
+            //ori_data.clear();
+            //std::cout<<"001"<<std::endl;
+            /*
+            memcpy(cmpData+outSize,lossless_data,offset_size);
+            outSize += offset_size;
+            delete []lossless_data;
+            //std::cout<<"002"<<std::endl;
+            memcpy(cmpData+outSize,&offset_size,sizeof(size_t));
+            outSize+=sizeof(size_t);
+            //std::cout<<"003"<<std::endl;
+            */
+
+            size_t newSize = outSize + offset_size + QoZ::Config::size_est()  + 100;
+            char * newcmpData = new char[newSize];
+            memcpy(newcmpData,cmpData,outSize);
+            delete [] cmpData;
+            memcpy(newcmpData+outSize,lossless_data,offset_size);
+            
+            outSize+=offset_size;
+            //std::cout<<offset_size<<" "<<outSizes[i]<<std::endl;
+            delete []lossless_data;
+            //lossless_data = NULL;
+            memcpy(newcmpData+outSize,&offset_size,sizeof(size_t));
+            //
+            outSize+=sizeof(size_t);
+
+            cmpData = newcmpData;
+
+                
+            
+        }
+        else{
+            offset_size=0;
+            
+            memcpy(cmpData+outSize,&offset_size,sizeof(size_t));
+            outSize+=sizeof(size_t);
+            
+
+        }
+
+
         conf.qoi = 0;
          //double incall_time = timer.stop();
         //std::cout << "incall time = " << incall_time << "s" << std::endl;
         return cmpData;
     }
+
+
 }
 
 template<class T, QoZ::uint N>
 void SZ_decompress_Interp(QoZ::Config &conf, char *cmpData, size_t cmpSize, T *decData) {
     assert(conf.cmprAlgo == QoZ::ALGO_INTERP);
     QoZ::uchar const *cmpDataPos = (QoZ::uchar *) cmpData;
+
+    size_t offset_size=0;
+    T* offset_data;
+    memcpy(&offset_size,cmpData+cmpSize-sizeof(size_t),sizeof(size_t));
+    cmpSize-=sizeof(size_t);   
+    if (offset_size!=0){
+        //outlier_data.resize(confs[i].num);
+        auto zstd = QoZ::Lossless_zstd();
+        cmpSize-=offset_size;
+        offset_data = reinterpret_cast<T *> ( zstd.decompress(reinterpret_cast<QoZ::uchar *>(cmpData)+cmpSize, offset_size) );
+        
+    } 
+
    
         
    if(conf.qoi > 0){
         //std::cout << conf.qoi << " " << conf.qoiEB << " " << conf.qoiEBBase << " " << conf.qoiEBLogBase << " " << conf.qoiQuantbinCnt << std::endl;
+
+        
+
+
+
+
         auto quantizer = QoZ::VariableEBLinearQuantizer<T, T>(conf.quantbinCnt / 2);
         auto quantizer_eb = QoZ::EBLogQuantizer<T>(conf.qoiEBBase, conf.qoiEBLogBase, conf.qoiQuantbinCnt / 2, conf.absErrorBound);
         auto qoi = QoZ::GetQOI<T, N>(conf);
         auto sz = QoZ::SZQoIInterpolationCompressor<T, N, QoZ::VariableEBLinearQuantizer<T, T>, QoZ::EBLogQuantizer<T>, QoZ::QoIEncoder<int>, QoZ::Lossless_zstd>(
                 quantizer, quantizer_eb, qoi, QoZ::QoIEncoder<int>(), QoZ::Lossless_zstd());
         sz.decompress(cmpDataPos, cmpSize, decData);
-        return;
+
+        
     }   
-    auto sz = QoZ::SZInterpolationCompressor<T, N, QoZ::LinearQuantizer<T>, QoZ::HuffmanEncoder<int>, QoZ::Lossless_zstd>(
-            QoZ::LinearQuantizer<T>(),
-            QoZ::HuffmanEncoder<int>(),
-            QoZ::Lossless_zstd());
-    sz.decompress(cmpDataPos, cmpSize, decData);
+    else{
+        auto sz = QoZ::SZInterpolationCompressor<T, N, QoZ::LinearQuantizer<T>, QoZ::HuffmanEncoder<int>, QoZ::Lossless_zstd>(
+                QoZ::LinearQuantizer<T>(),
+                QoZ::HuffmanEncoder<int>(),
+                QoZ::Lossless_zstd());
+        sz.decompress(cmpDataPos, cmpSize, decData);
+    }
+    if (offset_size!=0){
+        for(size_t j=0;j<conf.num;j++)
+            decData[j]+=offset_data[j];
+        delete []offset_data;
+    }
+    return;
         
 }
 
@@ -282,6 +447,14 @@ std::pair<double,double> CompressTest(const QoZ::Config &conf,const std::vector<
     size_t idx=0;   
     QoZ::concepts::CompressorInterface<T> *sz;
     size_t totalOutSize=0;
+    std::vector<T> final_offsets;  
+    std::shared_ptr<QoZ::concepts::QoIInterface<T, N> > qoi;
+    if(testConfig.qoi > 0 and testConfig.qoiRegionMode == 1){
+
+
+        qoi = QoZ::GetQOI<T, N>(testConfig);
+
+    } 
     if(algo == QoZ::ALGO_LORENZO_REG){
         auto quantizer = QoZ::LinearQuantizer<T>(testConfig.absErrorBound, testConfig.quantbinCnt / 2);
         if (useFast &&N == 3 && !testConfig.regression2) {
@@ -302,10 +475,11 @@ std::pair<double,double> CompressTest(const QoZ::Config &conf,const std::vector<
 
     }
     else{
-        std::cout<<"algo type error!"<<std::endl;
+        if(conf.verbose)
+            std::cout<<"algo type error!"<<std::endl;
         return std::pair<double,double>(0,0);
     }
-                           
+          
     for (int k=0;k<num_sampled_blocks;k++){
         size_t sampleOutSize;
         std::vector<T> cur_block(testConfig.num);
@@ -379,7 +553,35 @@ std::pair<double,double> CompressTest(const QoZ::Config &conf,const std::vector<
         }
         else if (tuningTarget==QoZ::TUNING_TARGET_AC){
             flattened_cur_blocks.insert(flattened_cur_blocks.end(),cur_block.begin(),cur_block.end());
-        }                      
+        } 
+
+        if(testConfig.qoi > 0 and testConfig.qoiRegionMode == 1){   
+
+
+        
+
+
+            auto ori_block = sampled_blocks[k];
+
+            if(N==3){
+                QoZ::compute_qoi_average_and_correct<T,N>(ori_block.data(), cur_block.data(), testConfig.dims[0], testConfig.dims[1], testConfig.dims[2], testConfig.qoiRegionSize, qoi, testConfig.regionalQoIeb);
+
+            }
+            else if (N==2){
+                QoZ::compute_qoi_average_and_correct<T,N>(ori_block.data(), cur_block.data(), 1, testConfig.dims[0], testConfig.dims[1], testConfig.qoiRegionSize, qoi, testConfig.regionalQoIeb);
+
+            }
+            else{//N==1
+                QoZ::compute_qoi_average_and_correct<T,N>(ori_block.data(), cur_block.data(), 1, 1, testConfig.dims[0], testConfig.qoiRegionSize, qoi, testConfig.regionalQoIeb);
+
+            }  
+
+            final_offsets.insert(final_offsets.end(),ori_block.begin(),ori_block.end());
+            
+        }  
+
+        
+
     }
     if(algo==QoZ::ALGO_INTERP ){
         q_bin_counts=testConfig.quant_bin_counts;
@@ -398,7 +600,31 @@ std::pair<double,double> CompressTest(const QoZ::Config &conf,const std::vector<
     
     auto cmprData=sz->encoding_lossless(totalOutSize,q_bins);             
     delete[]cmprData;
-  
+
+    if(testConfig.qoi > 0 and testConfig.qoiRegionMode == 1){   
+
+
+        auto zstd = QoZ::Lossless_zstd();
+
+        size_t offset_size;
+
+
+        QoZ::uchar *lossless_data = zstd.compress(reinterpret_cast< QoZ::uchar *>(final_offsets.data()),
+                                                     final_offsets.size()*sizeof(T),
+                                                     offset_size);
+
+            
+
+        
+        delete []lossless_data;
+        //lossless_data = NULL;
+        
+        totalOutSize+=offset_size;
+
+       
+    }
+
+    
     
     bitrate=8*double(totalOutSize)/ele_num;
     
@@ -453,7 +679,7 @@ double CompressTest_QoI(const QoZ::Config &conf,const std::vector< std::vector<T
             
     auto sz = QoZ::SZQoIInterpolationCompressor<T, N, QoZ::VariableEBLinearQuantizer<T, T>, QoZ::EBLogQuantizer<T>, QoZ::QoIEncoder<int>, QoZ::Lossless_zstd>(
                     quantizer, quantizer_eb, qoi, QoZ::QoIEncoder<int>(), QoZ::Lossless_zstd());
-                             
+    std::vector<T> final_offsets;                               
     for (int k=0;k<num_sampled_blocks;k++){
         size_t sampleOutSize;
         std::vector<T> cur_block(testConfig.num);
@@ -472,6 +698,32 @@ double CompressTest_QoI(const QoZ::Config &conf,const std::vector< std::vector<T
         
         block_q_bins.push_back(testConfig.quant_bins);
         block_q_bins_eb.push_back(testConfig.quant_bins_eb);
+
+        if(testConfig.qoiRegionMode == 1){   
+
+        
+
+
+            auto ori_block = sampled_blocks[k];
+
+            if(N==3){
+                QoZ::compute_qoi_average_and_correct<T,N>(ori_block.data(), cur_block.data(), testConfig.dims[0], testConfig.dims[1], testConfig.dims[2], testConfig.qoiRegionSize, qoi, testConfig.regionalQoIeb);
+
+            }
+            else if (N==2){
+                QoZ::compute_qoi_average_and_correct<T,N>(ori_block.data(), cur_block.data(), 1, testConfig.dims[0], testConfig.dims[1], testConfig.qoiRegionSize, qoi, testConfig.regionalQoIeb);
+
+            }
+            else{//N==1
+                QoZ::compute_qoi_average_and_correct<T,N>(ori_block.data(), cur_block.data(), 1, 1, testConfig.dims[0], testConfig.qoiRegionSize, qoi, testConfig.regionalQoIeb);
+
+            }  
+
+            final_offsets.insert(final_offsets.end(),ori_block.begin(),ori_block.end());
+            
+        }
+
+
         
 
 
@@ -500,6 +752,31 @@ double CompressTest_QoI(const QoZ::Config &conf,const std::vector< std::vector<T
     
     auto cmprData=sz.encoding_lossless(totalOutSize,q_bins_eb);             
     delete[]cmprData;
+
+    if(testConfig.qoiRegionMode == 1){   
+
+        
+
+        auto zstd = QoZ::Lossless_zstd();
+
+        size_t offset_size;
+
+
+        QoZ::uchar *lossless_data = zstd.compress(reinterpret_cast< QoZ::uchar *>(final_offsets.data()),
+                                                     final_offsets.size()*sizeof(T),
+                                                     offset_size);
+
+            
+
+        
+        delete []lossless_data;
+        //lossless_data = NULL;
+        
+        totalOutSize+=offset_size;
+
+       
+    }
+  
   
     
     bitrate=8*double(totalOutSize)/ele_num;
@@ -516,20 +793,54 @@ void QoI_tuning(QoZ::Config &conf, T *data){
     if (conf.qoi_tuned)
         return;
 
+    if (conf.qoiRegionMode==1 and conf.qoiRegionSize <= 1){
+        conf.qoiRegionMode=0;
+    }
+
     
     auto qoi = QoZ::GetQOI<T, N>(conf);
     if(conf.qoiEBMode !=QoZ::EB_ABS){//rel
         double max_qoi = -std::numeric_limits<double>::max();
         double min_qoi = std::numeric_limits<double>::max();
-       
-        for(size_t i=0; i<conf.num; i++){
-            
-            double q = qoi->eval(data[i]);
-            if(std::isinf(q) or std::isnan(q))
-                continue;
+        if(conf.qoiRegionMode != 1){
+            for(size_t i=0; i<conf.num; i++){
+                
+                double q = qoi->eval(data[i]);
+                if(std::isinf(q) or std::isnan(q))
+                    continue;
 
-            if (max_qoi < q) max_qoi = q;
-            if (min_qoi > q) min_qoi = q;
+                if (max_qoi < q) max_qoi = q;
+                if (min_qoi > q) min_qoi = q;
+            }
+        }
+        else{
+            std::vector<double> qoi_vals(conf.num);
+            for(size_t i=0; i<conf.num; i++)
+                qoi_vals[i] = qoi->eval(data[i]);
+
+            size_t n1, n2, n3;
+            if (N==3){
+                n1 = conf.dims[0];
+                n2 = conf.dims[1];
+                n3 = conf.dims[2];
+            }
+            else if (N==2){
+                n1 = 1;
+                n2 = conf.dims[0];
+                n3 = conf.dims[1];
+            }
+            else{
+                n1 = 1;
+                n2 = 1;
+                n3 = conf.dims[0];
+            }
+            auto average = QoZ::compute_average<double>(qoi_vals.data(), n1, n2, n3, conf.qoiRegionSize);
+            auto minmax = std::minmax_element(average.begin(),average.end());
+            min_qoi = *minmax.first;
+            max_qoi = *minmax.second;
+
+
+
         }
 
         if (max_qoi == min_qoi){
@@ -543,8 +854,9 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
 
     }
-    std::cout<<"ABS QoI eb: " << conf.qoiEB << std::endl;
-    if(conf.qoiRegionMode > 0 and (conf.qoi!=16 or conf.qoi_string == "x")){//regional average
+    if(conf.verbose)
+        std::cout<<"ABS QoI eb: " << conf.qoiEB << std::endl;
+    if(conf.qoiRegionMode > 0 and (conf.qoi!=16 or conf.qoi_string == "x")){//regional 
         //adjust qoieb
         double rate = 1.0;
         if(conf.qoiRegionMode == 2){//lap
@@ -565,22 +877,35 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                 num_blocks *= (conf.dims[i] - 1) / conf.qoiRegionSize + 1;
             }
 
-            double q = 0.999999;
-            double rate;
+            double q = conf.confidence;
             if(conf.tol_estimation==0)
-                rate = estimate_rate_Hoeffdin(num_elements,num_blocks,q, conf.error_std_rate);
+                rate = estimate_rate_Hoeffdin(num_elements,1,q, conf.error_std_rate);
             else
-                rate = estimate_rate_Bernstein(num_elements,num_blocks,q, conf.error_std_rate);
+                rate = estimate_rate_Bernstein(num_elements,1,q, conf.error_std_rate);
+            if(conf.verbose)
+                std::cout<<num_elements<<" "<<num_blocks<<" "<<conf.error_std_rate<<" "<<rate<<std::endl;
             
             rate = std::max(1.0,rate);//only effective for average. general: 1.0/sumai
         }
-        std::cout<<"Point wise QoI eb rate: " << rate << std::endl;
+        if(conf.qoi == 11 or (conf.qoi == 14 and conf.qoi_string == "x")){
+            if (conf.QoZ == 0)
+                rate = std::min(2.0,rate);
+            //else if 
+        }
+        if(conf.verbose)
+            std::cout<<"Pointwise QoI eb rate: " << rate << std::endl;
+        
+        
         conf.qoiEB *= rate;
     }
 
-    if (conf.qoi != 15 and conf.qoi_string == "x"){
-        conf.qoi = 0;
+    if (conf.qoi == 14 and conf.qoi_string == "x"){
+        //conf.qoi = 0;
         conf.absErrorBound = std::min(conf.absErrorBound,conf.qoiEB);
+        if (conf.qoiRegionMode != 1)
+            conf.qoi = 0;
+        conf.use_global_eb = true;
+        conf.qoi_tuned = true;
         return;
 
     }
@@ -588,7 +913,7 @@ void QoI_tuning(QoZ::Config &conf, T *data){
     qoi->set_qoi_tolerance(conf.qoiEB);
     
     QoZ::Config testConf = conf;
-    conf.ebs = std::vector<double>(conf.num);
+    auto ori_ebs = std::vector<double>(conf.num);
     // use quantile to determine abs bound
     {
 
@@ -604,18 +929,18 @@ void QoI_tuning(QoZ::Config &conf, T *data){
             
             //conf.qoiEB = 1e10;//pass check_compliance, to revise
             for (size_t i = 0; i < conf.num; i++){
-                conf.ebs[i] = qoi->interpret_eb(data+i,i);
-                if (min_abs_eb>conf.ebs[i])
-                    min_abs_eb = conf.ebs[i];
+                ori_ebs[i] = qoi->interpret_eb(data+i,i);
+                if (min_abs_eb>ori_ebs[i])
+                    min_abs_eb = ori_ebs[i];
 
             }
             //conf.qoi = 14; //back to pointwise
         }
         else{
             for (size_t i = 0; i < conf.num; i++){
-                conf.ebs[i] = qoi->interpret_eb(data[i]);
-                    if (min_abs_eb>conf.ebs[i])
-                        min_abs_eb = conf.ebs[i];
+                ori_ebs[i] = qoi->interpret_eb(data[i]);
+                    if (min_abs_eb>ori_ebs[i])
+                        min_abs_eb = ori_ebs[i];
             }
         }
         //double max_quantile_rate = 0.2;
@@ -627,7 +952,7 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
         double best_abs_eb;
 
-        std::vector<double>ebs(conf.ebs.begin(),conf.ebs.end());
+        std::vector<double>ebs(ori_ebs.begin(),ori_ebs.end());
 
 
         if(conf.quantile>0){
@@ -640,7 +965,14 @@ void QoI_tuning(QoZ::Config &conf, T *data){
             //std::array<double,4> fixrate = {1.0,1.05,1.10,1.15};//or{1.0,1.1,1.2,1.3}
             
             double quantile_split=0.1;
-            for(auto i:{1.0,0.5,0.25,0.10,0.05,0.025,0.01})
+            std::vector<double> r_list = {1.0,0.5,0.25,0.10,0.05,0.025,0.01};
+            /*
+            if(conf.qoiRegionMode == 1){
+                r_list.push_back(0.005);
+                r_list.push_back(0.002);
+                r_list.push_back(0.001);
+            }*/
+            for(auto i:r_list)
                 quantiles.push_back((size_t)(i*k));
             int quantile_num = quantiles.size();
 
@@ -722,9 +1054,13 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                     qoi->set_global_eb(testConf.absErrorBound);
                     // reset variables for average of square
                     
-                    double cur_br = CompressTest_QoI<T,N>(testConf,sampled_blocks,qoi);        
-                    std::cout << "current_eb = " << testConf.absErrorBound << ", current_br = " << cur_br << std::endl;
-                    if(cur_br < best_br * 1.02){//todo: optimize
+                    double cur_br = CompressTest_QoI<T,N>(testConf,sampled_blocks,qoi);
+
+
+
+                    if(conf.verbose)
+                        std::cout << "current_eb = " << testConf.absErrorBound << ", current_br = " << cur_br << std::endl;
+                    if(  cur_br < best_br * 1.02 ){//todo: optimize
                         best_br = cur_br;
                         best_abs_eb = testConf.absErrorBound;
                         best_quantile = quantile;
@@ -761,7 +1097,7 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                 }
 
 
-                if (conf.qoiRegionMode == 0 or (conf.qoiRegionMode == 1 and conf.qoiRegionSize >= 3)){
+                if (1){
                 //test full-global mode
                    
                     testConf.absErrorBound = best_abs_eb;
@@ -770,7 +1106,8 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
                     std::pair<double,double> results=CompressTest<T,N>(testConf, sampled_blocks,QoZ::ALGO_INTERP,QoZ::TUNING_TARGET_CR);
                     double cur_br =results.first;
-                    std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_br = " << cur_br << std::endl;
+                    if(conf.verbose)
+                        std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_br = " << cur_br << std::endl;
                     if(cur_br<0.98*best_br){//todo: optimize
                         conf.use_global_eb = true;
                         //Conf.qoiPtr = qoi;
@@ -784,7 +1121,8 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
                         std::pair<double,double> results=CompressTest<T,N>(testConf, sampled_blocks,QoZ::ALGO_INTERP,QoZ::TUNING_TARGET_CR);
                         double cur_br =results.first;
-                        std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_br = " << cur_br << std::endl;
+                        if(conf.verbose)
+                            std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_br = " << cur_br << std::endl;
                         if(cur_br<0.98*best_br){//todo: optimize
                             conf.use_global_eb = true;
                             //Conf.qoiPtr = qoi;
@@ -857,8 +1195,9 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                     auto cmprData = sz.compress(testConf, sampling_data, sampleOutSize,0);
                     sz.clear();
                     delete[]cmprData;
-                    double cur_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;                
-                    std::cout << "current_eb = " << testConf.absErrorBound << ", current_ratio = " << cur_ratio << std::endl;
+                    double cur_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize; 
+                    if(conf.verbose)               
+                        std::cout << "current_eb = " << testConf.absErrorBound << ", current_ratio = " << cur_ratio << std::endl;
                     double fr = fixrate[idx];
                     if(cur_ratio*fr>best_ratio){
                         best_ratio = cur_ratio*fr;
@@ -900,18 +1239,18 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
                 size_t count = 0;
                 for (size_t i = 0; i < conf.num; i++){
-                    if(conf.ebs[i] < best_abs_eb)
+                    if(ori_ebs[i] < best_abs_eb)
                         count++;
                 }
 
                 double smaller_ebs_ratio = (double)(count)/(double)(conf.num);
 
-                if( (conf.qoiRegionMode == 0 or (conf.qoiRegionMode == 1 and conf.qoiRegionSize >= 3)) and (smaller_ebs_ratio <= 1.0/1024.0 or min_abs_eb >= 0.95 * best_abs_eb ) ){//may fix
+                if( 1 and (smaller_ebs_ratio <= 1.0/1024.0 or min_abs_eb >= 0.95 * best_abs_eb ) ){//may fix
                     conf.use_global_eb = true;
                     //conf.qoiPtr = qoi;
                 }
 
-                else if (conf.qoiRegionMode == 0 or (conf.qoiRegionMode == 1 and conf.qoiRegionSize >= 3)){//untested
+                else if (1){//untested
                 //test full-global mode
                    
                     testConf.absErrorBound = best_abs_eb;
@@ -926,8 +1265,9 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                         QoZ::Lossless_zstd());
                     auto cmprData = sz.compress(testConf, sampling_data, sampleOutSize,0);
                     delete[]cmprData;
-                    double cur_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;                
-                    std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_ratio = " << cur_ratio << std::endl;
+                    double cur_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;     
+                    if(conf.verbose)           
+                        std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_ratio = " << cur_ratio << std::endl;
                     //double fr = fixrate[idx];
                     if(cur_ratio>best_ratio*1.02){
                         best_ratio = cur_ratio;
@@ -944,8 +1284,9 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                         // reset variables for average of square
                         auto cmprData = sz.compress(testConf, sampling_data, sampleOutSize,0);
                         delete[]cmprData;
-                        double cur_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;                
-                        std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_ratio = " << cur_ratio << std::endl;
+                        double cur_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;   
+                        if(conf.verbose)             
+                            std::cout << "Global test, current_eb = " << testConf.absErrorBound << ", current_ratio = " << cur_ratio << std::endl;
                         //double fr = fixrate[idx];
                         if(cur_ratio>best_ratio*1.02){
                             best_ratio = cur_ratio;
@@ -959,9 +1300,9 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
             }
             
+            if(conf.verbose)  
             
-            
-             std::cout<<"Selected quantile: "<<(double)best_quantile/(double)conf.num<<std::endl;
+                std::cout<<"Selected quantile: "<<(double)best_quantile/(double)conf.num<<std::endl;
             
             
         }
@@ -1042,19 +1383,18 @@ void QoI_tuning(QoZ::Config &conf, T *data){
 
         }
         */
-
+        ebs.clear();
+        ebs.shrink_to_fit();
         qoi->set_global_eb(best_abs_eb);
 
         
         //std::cout<<"Smaller ebs: "<<smaller_ebs_ratio<<std::endl;
 
         
-        if(conf.use_global_eb)
-            std::cout<<"Use global eb."<<std::endl; 
-
         
-        std::cout << "Best abs eb / pre-set eb: " << best_abs_eb / tmp_abs_eb << std::endl; 
-        std::cout << best_abs_eb << " " << tmp_abs_eb << std::endl;
+        if(conf.verbose)  
+            std::cout << "Best abs eb / pre-set eb: " << best_abs_eb / tmp_abs_eb << std::endl; 
+        //std::cout << best_abs_eb << " " << tmp_abs_eb << std::endl;
         conf.absErrorBound = best_abs_eb;
         //qoi->set_global_eb(best_abs_eb);
        // conf.setDims(dims.begin(), dims.end());
@@ -1063,9 +1403,19 @@ void QoI_tuning(QoZ::Config &conf, T *data){
          //   qoi->set_dims(dims);
         //    qoi->init();
         //}
-        for (size_t i = 0; i < conf.num; i++){
-            if(conf.ebs[i]>best_abs_eb)
-                conf.ebs[i] = best_abs_eb;
+        if(conf.use_global_eb){
+            if(conf.verbose)  
+                std::cout<<"Use global eb."<<std::endl; 
+            ori_ebs.clear();
+            ori_ebs.shrink_to_fit();
+        }
+        else{
+            /*
+            for (size_t i = 0; i < conf.num; i++){
+                if(ori_ebs[i]>best_abs_eb)
+                    ori_ebs[i] = best_abs_eb;
+            }*/ //deleted
+            conf.ebs = std::move(ori_ebs);
         }
 
         conf.qoiEBBase = conf.absErrorBound / 1030;
@@ -1197,6 +1547,7 @@ double Tuning(QoZ::Config &conf, T *data){
             
         conf.sampleBlockSize = (N<=2?64:32);
     }
+   
 
     if(conf.QoZ>0){
         
@@ -1249,7 +1600,8 @@ double Tuning(QoZ::Config &conf, T *data){
         conf.dynamicDimCoeff=0;
         conf.blockwiseTuning=0;
     }
-    
+     if(conf.qoi>0 and conf.qoiRegionMode==1 and conf.qoiRegionSize>1)
+        conf.testLorenzo = 0;
 
     if(conf.multiDimInterp==0)
         conf.dynamicDimCoeff=0;
@@ -1489,7 +1841,11 @@ double Tuning(QoZ::Config &conf, T *data){
         //std::cout << conf.qoi << " " << conf.qoiEB << " " << conf.qoiEBBase << " " << conf.qoiEBLogBase << " " << conf.qoiQuantbinCnt << std::endl;
 
         QoI_tuning<T,N>(conf, data);
+
     }
+    //auto conf_qoi = conf.qoi;
+    //conf.qoi = 0;
+    /*
     else{
         // compute isovalues for comparison
         T max = data[0];
@@ -1504,10 +1860,10 @@ double Tuning(QoZ::Config &conf, T *data){
         for(int i=0; i<num; i++){
             conf.isovalues.push_back(min + range / (num + 1));
         }        
-    }
+    }*/
 
 
-
+    auto ebs = std::move(conf.ebs);
 
     if (conf.predictorTuningRate>0 and conf.predictorTuningRate<1){
         if (conf.verbose)
@@ -1851,7 +2207,8 @@ double Tuning(QoZ::Config &conf, T *data){
                 if(best_interp_cr_2>best_interp_cr_1*1.05){
                     conf.frozen_dim=frozen_dim;
                     bestInterpMeta_list=interpMeta_list;
-                    std::cout<<"Dim "<<frozen_dim<<" frozen"<<std::endl;
+                    if(conf.verbose)  
+                        std::cout<<"Dim "<<frozen_dim<<" frozen"<<std::endl;
                 }
             
 
@@ -1987,25 +2344,32 @@ double Tuning(QoZ::Config &conf, T *data){
         }
 
         else{
-            QoZ::Config lorenzo_config = conf;
-            lorenzo_config.cmprAlgo = QoZ::ALGO_LORENZO_REG;
-            lorenzo_config.setDims(sample_dims.begin(), sample_dims.end());
-            lorenzo_config.lorenzo = true;
-            lorenzo_config.lorenzo2 = true;
-            lorenzo_config.regression = false;
-            lorenzo_config.regression2 = false;
-            lorenzo_config.openmp = false;
-            lorenzo_config.blockSize = 5;//why?
-            size_t sampleOutSize;
-            std::vector<T> cur_sampling_data=sampling_data;
-            auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, cur_sampling_data.data(), sampleOutSize);
-                
-            delete[]cmprData;
-            double ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
-            if(conf.verbose)
-                printf("Lorenzo ratio = %.4f\n", ratio);
+            double ratio;
+            if(!(conf.qoi>0 and conf.qoiRegionMode==1 and conf.qoiRegionSize>1)){
+                QoZ::Config lorenzo_config = conf;
+                lorenzo_config.cmprAlgo = QoZ::ALGO_LORENZO_REG;
+                lorenzo_config.setDims(sample_dims.begin(), sample_dims.end());
+                lorenzo_config.lorenzo = true;
+                lorenzo_config.lorenzo2 = true;
+                lorenzo_config.regression = false;
+                lorenzo_config.regression2 = false;
+                lorenzo_config.openmp = false;
+                lorenzo_config.blockSize = 5;//why?
+                lorenzo_config.qoi = 0;
+                size_t sampleOutSize;
+                std::vector<T> cur_sampling_data=sampling_data;
+                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, cur_sampling_data.data(), sampleOutSize,true);
+                    
+                delete[]cmprData;
+                ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
+                if(conf.verbose)
+                    printf("Lorenzo ratio = %.4f\n", ratio);
 
-            best_lorenzo_ratio = ratio;
+                best_lorenzo_ratio = ratio;
+            }
+            else{
+                best_lorenzo_ratio = 0;
+            }
             double best_interp_ratio = 0;
 
 
@@ -2027,7 +2391,7 @@ double Tuning(QoZ::Config &conf, T *data){
                 best_interp_ratio = ratio;
                 conf.interpMeta.interpDirection = direction_op;
             }
-            useInterp=!(best_lorenzo_ratio > best_interp_ratio && best_lorenzo_ratio < 80 && best_interp_ratio < 80);
+            useInterp=!(best_lorenzo_ratio > best_interp_ratio && best_lorenzo_ratio < 80 && best_interp_ratio < 80) ;
             if(conf.verbose){
                 std::cout << "interp best direction = " << (unsigned) conf.interpMeta.interpDirection << std::endl;
                 
@@ -2055,6 +2419,7 @@ double Tuning(QoZ::Config &conf, T *data){
             
         if(conf.verbose)
             std::cout<<"B-M tuning started."<<std::endl;
+        QoZ::Timer bmt_timer(true);
        
         if (conf.autoTuningRate!=conf.predictorTuningRate){//} and (conf.predictorTuningRate!=0 or conf.autoTuningRate!=conf.waveletTuningRate)){
               
@@ -2197,9 +2562,11 @@ double Tuning(QoZ::Config &conf, T *data){
 
         //add lorenzo
         conf.absErrorBound=oriabseb;
-        if(conf.testLorenzo){    
+        if(conf.testLorenzo){
 
 
+
+            auto oqoi = conf.qoi;
             std::pair<double,double> results=CompressTest<T,N>(conf, sampled_blocks,QoZ::ALGO_LORENZO_REG,(QoZ::TUNING_TARGET)conf.tuningTarget,false,profiling_coeff,orig_means,
                     orig_sigma2s,orig_ranges,flattened_sampled_data);
 
@@ -2242,7 +2609,8 @@ double Tuning(QoZ::Config &conf, T *data){
                     bestbeta=-1;
                     useInterp=false;
                 }
-            }          
+            }   
+            conf.qoi = oqoi;       
         }
         conf.absErrorBound=oriabseb;
         /*
@@ -2251,7 +2619,7 @@ double Tuning(QoZ::Config &conf, T *data){
             timer.start();
         }
         */
-        
+        bmt_timer.stop("B-M step");
         if(conf.tuningTarget==QoZ::TUNING_TARGET_AC){
             bestm=1-bestm;
         }
@@ -2265,6 +2633,8 @@ double Tuning(QoZ::Config &conf, T *data){
         else if (conf.tuningTarget==QoZ::TUNING_TARGET_AC ){
             metric_name="AutoCorrelation";
         }
+
+
         if(conf.verbose){
             printf("Autotuning finished.\n");
             if (useInterp)
@@ -2279,6 +2649,7 @@ double Tuning(QoZ::Config &conf, T *data){
         conf.num=global_num;  
 
     }
+
     else if(useInterp and conf.QoZ){
         std::pair<double,double> ab=setABwithRelBound(rel_bound,2);
         conf.alpha=ab.first;
@@ -2293,11 +2664,12 @@ double Tuning(QoZ::Config &conf, T *data){
     else{
          conf.cmprAlgo=QoZ::ALGO_LORENZO_REG;
     } 
-        
+    //conf.qoi = conf_qoi;
     for(int i=0;i<sampled_blocks.size();i++){
         std::vector< T >().swap(sampled_blocks[i]);              
     }
-    std::vector< std::vector<T> >().swap(sampled_blocks);     
+    std::vector< std::vector<T> >().swap(sampled_blocks);
+    conf.ebs = ebs;     
     return best_lorenzo_ratio;    
 }
 
@@ -2355,6 +2727,16 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
     } 
 
     else {
+        conf.use_global_eb = false;//added.
+        conf.qoiEBBase = conf.absErrorBound/1030;
+        auto ebs = std::move(conf.ebs);
+        /*
+        std::vector<double> ebs;
+        if(conf.qoi){
+            qoi = QoZ::GetQOI<T, N>(conf);
+            
+            ebs[i] = qoi->interpret_eb(data[i]);
+        }*/
         QoZ::Config lorenzo_config = conf;
         size_t sampling_num, sampling_block;        
         std::vector<size_t> sample_dims(N);
@@ -2365,20 +2747,22 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
             
         sampling_data = QoZ::sampling<T, N>(data, conf.dims, sampling_num, sample_dims, sampling_block);    
         lorenzo_config.cmprAlgo = QoZ::ALGO_LORENZO_REG;
-        
+        auto ori_qoi = conf.qoi;
         lorenzo_config.lorenzo = true;
         lorenzo_config.lorenzo2 = true;
         lorenzo_config.regression = false;
         lorenzo_config.regression2 = false;
         lorenzo_config.openmp = false;
         lorenzo_config.blockSize = 5;//why?
+        lorenzo_config.qoi = 0;
         if (sampling_num != conf.num) {
             lorenzo_config.setDims(sample_dims.begin(), sample_dims.end());
        
         //lorenzo_config.quantbinCnt = 65536 * 2;
                     
             if(conf.autoTuningRate>0 or conf.predictorTuningRate>0){
-                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, sampling_data.data(), sampleOutSize);
+                auto tempdata = sampling_data;
+                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, tempdata.data(), sampleOutSize,true);
                 delete[]cmprData;
                 ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
                 //printf("Lorenzo ratio = %.2f\n", ratio);
@@ -2387,9 +2771,10 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
           
             //further tune lorenzo
             if (N == 3 ) {
+                auto tempdata = sampling_data;
                 lorenzo_config.quantbinCnt = QoZ::optimize_quant_invl_3d<T>(data, conf.dims[0], conf.dims[1], conf.dims[2], conf.absErrorBound);
                 lorenzo_config.pred_dim = 2;
-                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, sampling_data.data(), sampleOutSize);
+                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, tempdata.data(), sampleOutSize,true);
                 delete[]cmprData;
                 ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
                 //printf("Lorenzo, pred_dim=2, ratio = %.4f\n", ratio);
@@ -2399,14 +2784,19 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
                     lorenzo_config.pred_dim = 3;
                 }
             }
-            if (conf.relErrorBound < 1.01e-6 && best_lorenzo_ratio > 5 && lorenzo_config.quantbinCnt != 16384) {
+             conf.relErrorBound = conf.absErrorBound / conf.rng;
+            // std::cout<<conf.relErrorBound<<std::endl;
+            if ((conf.relErrorBound < 1.01e-6) && best_lorenzo_ratio > 5 && lorenzo_config.quantbinCnt != 16384) {
+                auto tempdata = sampling_data;
                 auto quant_num = lorenzo_config.quantbinCnt;
                 lorenzo_config.quantbinCnt = 16384;
-                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, sampling_data.data(), sampleOutSize);
+                auto cmprData = SZ_compress_LorenzoReg<T, N>(lorenzo_config, tempdata.data(), sampleOutSize,true);
                 delete[]cmprData;
                 ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
     //            printf("Lorenzo, quant_bin=8192, ratio = %.2f\n", ratio);
+               // std::cout<<ratio<<" "<<best_lorenz
                 if (ratio > best_lorenzo_ratio * 1.02) {
+                    //std::cout<<"16384"<<std::endl;
                     best_lorenzo_ratio = ratio;
                 } else {
                     lorenzo_config.quantbinCnt = quant_num;
@@ -2417,6 +2807,83 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
      
         
         conf = lorenzo_config;
+        conf.qoi = ori_qoi;
+
+        
+        //std::cout<<"Max eb: "<<*std::max_element(conf.ebs.begin(),conf.ebs.end());
+        if(conf.qoi>0 and sampling_num != conf.num){
+            conf.ebs = QoZ::sampling<double, N>(ebs.data(), conf.dims, sampling_num, sample_dims, sampling_block);  
+            //conf.ebs = std::move(ebs);  
+            auto old_dims=conf.dims;
+            conf.setDims(sample_dims.begin(), sample_dims.end());
+            auto tempdata = sampling_data;
+            auto cmprData = SZ_compress_LorenzoReg<T, N>(conf, tempdata.data(), sampleOutSize,true);
+            delete[]cmprData;
+            //std::cout<<"p1"<<std::endl;
+            best_lorenzo_ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
+
+            //auto eb = conf.absErrorBound;
+            //std::cout<<"refixing eb"<<std::endl;
+            auto ori_eb = conf.absErrorBound;
+            //std::cout<<best_lorenzo_ratio<<std::endl;
+
+            for(auto cur_eb:{2.0*ori_eb,1.5*ori_eb,0.75*ori_eb,0.5*ori_eb}){
+                tempdata = sampling_data;
+                auto last_eb = conf.absErrorBound;
+                conf.absErrorBound = cur_eb;
+                conf.qoiEBBase = conf.absErrorBound/1030;
+                cmprData = SZ_compress_LorenzoReg<T, N>(conf, tempdata.data(), sampleOutSize,true);
+                delete[]cmprData;
+                //std::cout<<"p1"<<std::endl;
+                ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
+                //std::cout<<conf.absErrorBound<<std::endl;
+                //printf("Lorenzo, test, ratio = %.2f\n", ratio);
+                if (ratio > best_lorenzo_ratio * 1.01) {
+                    best_lorenzo_ratio = ratio;
+                    conf.absErrorBound = cur_eb;
+                    conf.qoiEBBase = conf.absErrorBound/1030;
+                }
+                else{
+                    conf.absErrorBound = last_eb;
+                    conf.qoiEBBase = conf.absErrorBound/1030;
+                }
+
+            }
+            //std::cout<<conf.absErrorBound<<std::endl;
+            
+            if(!conf.use_global_eb){
+                //bool use_global_eb = conf.use_global_eb;
+                //for(auto cur_eb:{2*ori_eb,1.5*ori_eb,ori_eb,0.75*ori_eb,0.5*ori_eb}){
+                    //auto old_eb = conf.absErrorBound;
+                    //conf.absErrorBound=cur_eb;
+                    conf.use_global_eb = true;
+                    tempdata = sampling_data;
+                    cmprData = SZ_compress_LorenzoReg<T, N>(conf, tempdata.data(), sampleOutSize,true);
+                    delete[]cmprData;
+                    //std::cout<<"p1"<<std::endl;
+                    ratio = sampling_num * 1.0 * sizeof(T) / sampleOutSize;
+                    //printf("Lorenzo, ratio = %.2f\n", ratio);
+                    if (ratio > best_lorenzo_ratio *1.02) {
+                        best_lorenzo_ratio = ratio;
+                        conf.use_global_eb = true;
+                    }
+                    else{
+                        //conf.absErrorBound = old_eb;
+                        conf.use_global_eb = false;
+                    }
+                //}
+                //conf.use_global_eb = use_global_eb;
+            }
+            //conf.qoiEBBase = conf.absErrorBound/1030;
+            conf.setDims(old_dims.begin(), old_dims.end());
+
+            
+//          
+
+        }
+        if(!conf.use_global_eb)
+            conf.ebs = std::move(ebs);
+        conf.qoi = ori_qoi;
         double tuning_time = timer.stop();
         if(conf.verbose){
             std::cout << "Tuning time = " << tuning_time << "s" << std::endl;

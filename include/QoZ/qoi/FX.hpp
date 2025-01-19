@@ -19,6 +19,7 @@
 #include <symengine/eval.h> 
 #include <symengine/solve.h>
 #include <symengine/functions.h>
+#include <symengine/visitor.h>
 #include <set>
 
 using SymEngine::Expression;
@@ -35,7 +36,7 @@ using SymEngine::RCP;
 using SymEngine::Basic;
 using SymEngine::real_double;
 using SymEngine::eval_double;
-
+using SymEngine::eval_double;
 
 using SymEngine::solve;
 using SymEngine::rcp_static_cast;
@@ -45,7 +46,7 @@ using SymEngine::Log;
 using SymEngine::sqrt;
 using SymEngine::is_a;
 using SymEngine::FiniteSet;
-
+using SymEngine::free_symbols;
 
 namespace QoZ {
     template<class T, uint N>
@@ -57,6 +58,7 @@ namespace QoZ {
                 global_eb(global_eb), isolated (isolated), threshold (threshold), func_string(ff) {
             // TODO: adjust type for int data
             //printf("global_eb = %.4f\n", (double) global_eb);
+            //printf("qoi tol = %.4f\n", (double) tolerance);
             concepts::QoIInterface<T, N>::id = 14;
            // std::cout<<"init 1 "<< std::endl;
             
@@ -83,8 +85,29 @@ namespace QoZ {
             //std::cout<<"ddf: "<< ddf<<std::endl;
   
             func = convert_expression_to_function(f, x);
-            deri_1 = convert_expression_to_function(df, x);
-            deri_2 = convert_expression_to_function(ddf, x);
+
+            if (free_symbols(df).empty() ){
+                //std::cout<<"df: "<<df<<std::endl;
+                const_d1 = true;
+                d1 = eval_double(df);
+                const_d2 = true;
+                d2 = 0;
+            }
+            else{
+                deri_1 = convert_expression_to_function(df, x);
+                
+                if (free_symbols(ddf).empty() ){
+                    const_d2 = true;
+                    d2 = eval_double(ddf);
+                }
+                else
+                    deri_2 = convert_expression_to_function(ddf, x);
+            }
+
+            //std::cout<<"x: "<<1<<" f(x): "<<func(1)<<std::endl;
+            //std::cout<<"x: "<<2<<" f(x): "<<func(2)<<std::endl;
+            //std::cout<<"x: "<<0.5<<" f(x): "<<func(0.5)<<std::endl;
+            //std::cout<<"x: "<<0<<" f(x): "<<func(0)<<std::endl;
 
             if (isolated)
                 singularities.insert(threshold);
@@ -107,8 +130,10 @@ namespace QoZ {
         T interpret_eb(T data) const {
             
 
-            double a = fabs(deri_1(data));//datatype may be T
-            double b = fabs(deri_2(data));
+            double a = const_d1 ? d1 : fabs(deri_1(data));//datatype may be T
+           // double a = 2*data;
+           // double b = 2.0;
+           double b = const_d2 ? d2 : fabs(deri_2(data));
            // 
             T eb;
             if(!std::isnan(a) and !std::isnan(b) and !std::isinf(a) and !std::isinf(b)and b >=1e-10 )
@@ -140,14 +165,16 @@ namespace QoZ {
             //if(isolated and (data-thresold)*(dec_data-thresold)<0)//maybe can remove
             //    return false;
             
-            double q_ori = eval(data);
+            double q_ori = func(data);
             if (std::isnan(q_ori) or std::isinf(q_ori))
                 return data == dec_data;
-            double q_dec = eval(dec_data);
+            double q_dec = func(dec_data);
             if (std::isnan(q_dec) or std::isinf(q_dec))
                 return false;
 
             return (fabs(q_ori - q_dec) <= tolerance);
+            
+            //return fabs(data*data-dec_data*dec_data)<=tolerance;
         }
 
         void update_tolerance(T data, T dec_data){}
@@ -172,7 +199,7 @@ namespace QoZ {
 
         } 
 
-        std::string get_expression() const{
+        std::string get_expression(const std::string var="x") const{
             return func_string;
         }
 
@@ -195,7 +222,8 @@ namespace QoZ {
         std::function<double(double)> deri_2;
         std::set<double>singularities;
         std::string func_string;
-
+        bool const_d1=false, const_d2 = false;
+        double d1=0.0,d2=0.0;
         double threshold;
         bool isolated;
      

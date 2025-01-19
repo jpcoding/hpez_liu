@@ -15,7 +15,7 @@ namespace QoZ {
     class QoI_X_Exp : public concepts::QoIInterface<T, N> {
 
     public:
-        QoI_X_Exp(double tolerance, T global_eb, double base = 2.0) : 
+        QoI_X_Exp(double tolerance, T global_eb, double base = std::exp(1)) : 
                 tolerance(tolerance),
                 global_eb(global_eb), base(base) {
             // TODO: adjust type for int data
@@ -51,7 +51,7 @@ namespace QoZ {
         }
 
         bool check_compliance(T data, T dec_data, bool verbose=false) const {
-            return (fabs(pow(base,data) - pow(base,dec_data)) < tolerance);
+            return (fabs(pow(base,data) - pow(base,dec_data)) <= tolerance);
         }
 
         void update_tolerance(T data, T dec_data){}
@@ -76,8 +76,8 @@ namespace QoZ {
 
         } 
 
-        std::string get_expression() const{
-            return std::to_string(base)+"^x";
+        std::string get_expression(const std::string var="x") const{
+            return std::to_string(base)+"^"+var;
         }
 
         void pre_compute(const T * data){}
