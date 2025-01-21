@@ -419,6 +419,7 @@ std::pair<double,double> CompressTest(const QoZ::Config &conf,const std::vector<
                     QoZ::TUNING_TARGET tuningTarget=QoZ::TUNING_TARGET_RD,bool useFast=true,double profiling_coeff=1,const std::vector<double> &orig_means=std::vector<double>(),
                     const std::vector<double> &orig_sigma2s=std::vector<double>(),const std::vector<double> &orig_ranges=std::vector<double>(),const std::vector<T> &flattened_sampled_data=std::vector<T>()){
     QoZ::Config testConfig(conf);
+    testConfig.qoi = 0;
     size_t ssim_size=conf.SSIMBlockSize;    
     if(algo == QoZ::ALGO_LORENZO_REG){
         testConfig.cmprAlgo = QoZ::ALGO_LORENZO_REG;
@@ -796,9 +797,10 @@ void QoI_tuning(QoZ::Config &conf, T *data){
     if (conf.qoiRegionMode==1 and conf.qoiRegionSize <= 1){
         conf.qoiRegionMode=0;
     }
-
+    //std::cout<<"getting"<<std::endl;
     
     auto qoi = QoZ::GetQOI<T, N>(conf);
+    //std::cout<<"getting"<<std::endl;
     if(conf.qoiEBMode !=QoZ::EB_ABS){//rel
         double max_qoi = -std::numeric_limits<double>::max();
         double min_qoi = std::numeric_limits<double>::max();
@@ -836,8 +838,11 @@ void QoI_tuning(QoZ::Config &conf, T *data){
             }
             auto average = QoZ::compute_average<double>(qoi_vals.data(), n1, n2, n3, conf.qoiRegionSize);
             auto minmax = std::minmax_element(average.begin(),average.end());
+
             min_qoi = *minmax.first;
             max_qoi = *minmax.second;
+
+
 
 
 
@@ -873,7 +878,7 @@ void QoI_tuning(QoZ::Config &conf, T *data){
             double num_blocks = 1;
             double num_elements = 1;
             for(int i=0; i<conf.dims.size(); i++){
-                num_elements *= conf.qoiRegionSize;
+                num_elements *= std::min(conf.dims[i],(size_t)conf.qoiRegionSize);
                 num_blocks *= (conf.dims[i] - 1) / conf.qoiRegionSize + 1;
             }
 
@@ -886,12 +891,42 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                 std::cout<<num_elements<<" "<<num_blocks<<" "<<conf.error_std_rate<<" "<<rate<<std::endl;
             
             rate = std::max(1.0,rate);//only effective for average. general: 1.0/sumai
+
+            if(conf.qoi == 11 or (conf.qoi == 14 and conf.qoi_string == "x")){
+                if(conf.qoiRegionSize <=4){//it is a random number. to Fix
+                    if (conf.QoZ == 0)
+                        rate = std::min(2.0,rate);
+                    else
+                        rate = std::min(2.0,rate);
+                }
+                else if(conf.qoiRegionSize <=8){//it is a random number. to Fix
+                    if (conf.QoZ == 0)
+                        rate = std::min(2.0,rate);
+                    else
+                        rate = std::min(4.0,rate);
+                }
+                else if(conf.qoiRegionSize <=16){//it is a random number. to Fix
+                    if (conf.QoZ == 0)
+                        rate = std::min(2.0,rate);
+                    else
+                        rate = std::min(6.0,rate);
+                }
+                else if(conf.qoiRegionSize <=32){//it is a random number. to Fix
+                    if (conf.QoZ == 0)
+                        rate = std::min(3.0,rate);
+                    else
+                        rate = std::min(8.0,rate);
+                }
+                else {
+                    if (conf.QoZ == 0)
+                        rate = std::min(4.0,rate);
+                    else
+                        rate = std::min(16.0,rate);
+                }
+                //else if 
+            }
         }
-        if(conf.qoi == 11 or (conf.qoi == 14 and conf.qoi_string == "x")){
-            if (conf.QoZ == 0)
-                rate = std::min(2.0,rate);
-            //else if 
-        }
+
         if(conf.verbose)
             std::cout<<"Pointwise QoI eb rate: " << rate << std::endl;
         
@@ -899,8 +934,10 @@ void QoI_tuning(QoZ::Config &conf, T *data){
         conf.qoiEB *= rate;
     }
 
-    if (conf.qoi == 14 and conf.qoi_string == "x"){
+    if ((conf.qoi == 11) or (conf.qoi == 14 and conf.qoi_string == "x")){//todo: add analyze qoi_string is linear
         //conf.qoi = 0;
+        if(conf.qoi == 11)
+            conf.qoiEB /= conf.qoi_lin_A;
         conf.absErrorBound = std::min(conf.absErrorBound,conf.qoiEB);
         if (conf.qoiRegionMode != 1)
             conf.qoi = 0;
@@ -1843,8 +1880,9 @@ double Tuning(QoZ::Config &conf, T *data){
         QoI_tuning<T,N>(conf, data);
 
     }
-    //auto conf_qoi = conf.qoi;
-    //conf.qoi = 0;
+    auto conf_qoi = conf.qoi;
+    if(!conf.use_global_eb or (conf.qoi>0 and conf.qoiRegionMode == 1))
+        conf.qoi = 0;
     /*
     else{
         // compute isovalues for comparison
@@ -2664,7 +2702,7 @@ double Tuning(QoZ::Config &conf, T *data){
     else{
          conf.cmprAlgo=QoZ::ALGO_LORENZO_REG;
     } 
-    //conf.qoi = conf_qoi;
+    conf.qoi = conf_qoi;
     for(int i=0;i<sampled_blocks.size();i++){
         std::vector< T >().swap(sampled_blocks[i]);              
     }

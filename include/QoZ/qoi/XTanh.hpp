@@ -2,8 +2,8 @@
 // Created by Xin Liang on 12/06/2021.
 //
 
-#ifndef SZ_QOI_X_SIN_HPP
-#define SZ_QOI_X_SIN_HPP
+#ifndef SZ_QOI_X_TANH_HPP
+#define SZ_QOI_X_TANH_HPP
 
 #include <algorithm>
 #include <cmath>
@@ -14,15 +14,15 @@
 namespace QoZ {
 
     template<class T, uint N>
-    class QoI_X_Sin : public concepts::QoIInterface<T, N> {
+    class QoI_X_Tanh : public concepts::QoIInterface<T, N> {
 
     public:
-        QoI_X_Sin(double tolerance, T global_eb) : 
+        QoI_X_Tanh(double tolerance, T global_eb) : 
                 tolerance(tolerance),
                 global_eb(global_eb) {
             // TODO: adjust type for int data
             //printf("global_eb = %.4f\n", (double) global_eb);
-            concepts::QoIInterface<T, N>::id = 22;
+            concepts::QoIInterface<T, N>::id = 23;
         }
 
         using Range = multi_dimensional_range<T, N>;
@@ -30,9 +30,24 @@ namespace QoZ {
 
         T interpret_eb(T data) const {
             
-            if (tolerance>=2)
-                return global_eb;
-            T eb = tolerance;
+            double t = std::tanh(data);
+            T eb;
+            if(t>=0){
+                //if(tolerance*tolerance<=1+t*t)
+                    eb = (t-tolerance)>-1 ? data-std::atanh(t-tolerance):global_eb;
+                //else
+                //    eb = (t+tolerance)<1 ? std::atanh(t+tolerance)-data:global_eb;
+            }
+            else{
+                //if(tolerance*tolerance>=1+t*t)
+                //    eb = (t-tolerance)>-1 ? data-std::atanh(t-tolerance):global_eb;
+                //else
+                    eb = (t+tolerance)<1 ? std::atanh(t+tolerance)-data:global_eb;
+            }
+
+            //double low_bound = (t-tolerance)>-1? data-std::atanh(t-tolerance):global_eb;
+            //double high_bound = (t+tolerance)<-1? std::atanh(t+tolerance)-data:global_eb;
+            //T eb = std::min(low_bound,high_bound);
             return std::min(eb,global_eb);
         }
 
@@ -45,7 +60,7 @@ namespace QoZ {
         }
 
         bool check_compliance(T data, T dec_data, bool verbose=false) const {
-            return (fabs(sin(data) - sin(dec_data)) < tolerance);
+            return (fabs(std::tanh(data) - std::tanh(dec_data)) < tolerance);
         }
 
         void update_tolerance(T data, T dec_data){}
@@ -66,11 +81,11 @@ namespace QoZ {
 
         double eval(T val) const{
             
-            return sin(val);//todo
+            return std::tanh(val);//todo
 
         } 
         std::string get_expression(const std::string var="x") const{
-            return "sin("+var+")";
+            return "tanh("+var+")";
         }
 
         void pre_compute(const T * data){}
@@ -86,15 +101,15 @@ namespace QoZ {
 
 
     template<class T, uint N>
-    class QoI_X_Sin_Approx : public concepts::QoIInterface<T, N> {
+    class QoI_X_Tanh_Approx : public concepts::QoIInterface<T, N> {
 
     public:
-        QoI_X_Sin_Approx(double tolerance, T global_eb) : 
+        QoI_X_Tanh_Approx(double tolerance, T global_eb) : 
                 tolerance(tolerance),
                 global_eb(global_eb) {
             // TODO: adjust type for int data
             //printf("global_eb = %.4f\n", (double) global_eb);
-            concepts::QoIInterface<T, N>::id = 22;
+            concepts::QoIInterface<T, N>::id = 23;
         }
 
         using Range = multi_dimensional_range<T, N>;
@@ -102,9 +117,9 @@ namespace QoZ {
 
         T interpret_eb(T data) const {
             
-
-            double a = fabs(cos(data));//datatype may be T
-            double b = fabs(sin(data));
+            double t = std::tanh(data);
+            double a = 1-t*t;
+            double b = fabs(2*a*t);
             T eb;
             if(!std::isnan(a) and !std::isnan(b) and !std::isinf(a) and !std::isinf(b)and b >= 1e-10 )
                 eb = (sqrt(a*a+2*b*tolerance)-a)/b;
@@ -125,7 +140,7 @@ namespace QoZ {
         }
 
         bool check_compliance(T data, T dec_data, bool verbose=false) const {
-            return (fabs(sin(data) - sin(dec_data)) < tolerance);
+            return (fabs(std::tanh(data) - std::tanh(dec_data)) < tolerance);
         }
 
         void update_tolerance(T data, T dec_data){}
@@ -146,7 +161,7 @@ namespace QoZ {
 
         double eval(T val) const{
             
-            return sin(val);//todo
+            return std::tanh(val);//todo
 
         } 
         std::string get_expression(const std::string var="x") const{
