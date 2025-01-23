@@ -802,58 +802,67 @@ void QoI_tuning(QoZ::Config &conf, T *data){
     auto qoi = QoZ::GetQOI<T, N>(conf);
     //std::cout<<"getting"<<std::endl;
     if(conf.qoiEBMode !=QoZ::EB_ABS){//rel
-        double max_qoi = -std::numeric_limits<double>::max();
-        double min_qoi = std::numeric_limits<double>::max();
-        if(conf.qoiRegionMode != 1){
-            for(size_t i=0; i<conf.num; i++){
-                
-                double q = qoi->eval(data[i]);
-                if(std::isinf(q) or std::isnan(q))
-                    continue;
+        /*
+         if ((conf.qoi == 11) or (conf.qoi == 14 and conf.qoi_string == "x")){//todo: add analyze qoi_string is linear
+        //conf.qoi = 0;
+            conf.qoiEB = conf.absErrorBound;
+            if(conf.qoi == 11)
+                conf.qoiEB * conf.qoi_lin_A;
+        }*/
+        //else{
+            double max_qoi = -std::numeric_limits<double>::max();
+            double min_qoi = std::numeric_limits<double>::max();
+            if(conf.qoiRegionMode != 1){
+                for(size_t i=0; i<conf.num; i++){
+                    
+                    double q = qoi->eval(data[i]);
+                    if(std::isinf(q) or std::isnan(q))
+                        continue;
 
-                if (max_qoi < q) max_qoi = q;
-                if (min_qoi > q) min_qoi = q;
-            }
-        }
-        else{
-            std::vector<double> qoi_vals(conf.num);
-            for(size_t i=0; i<conf.num; i++)
-                qoi_vals[i] = qoi->eval(data[i]);
-
-            size_t n1, n2, n3;
-            if (N==3){
-                n1 = conf.dims[0];
-                n2 = conf.dims[1];
-                n3 = conf.dims[2];
-            }
-            else if (N==2){
-                n1 = 1;
-                n2 = conf.dims[0];
-                n3 = conf.dims[1];
+                    if (max_qoi < q) max_qoi = q;
+                    if (min_qoi > q) min_qoi = q;
+                }
             }
             else{
-                n1 = 1;
-                n2 = 1;
-                n3 = conf.dims[0];
+                std::vector<double> qoi_vals(conf.num);
+                for(size_t i=0; i<conf.num; i++)
+                    qoi_vals[i] = qoi->eval(data[i]);
+
+                size_t n1, n2, n3;
+                if (N==3){
+                    n1 = conf.dims[0];
+                    n2 = conf.dims[1];
+                    n3 = conf.dims[2];
+                }
+                else if (N==2){
+                    n1 = 1;
+                    n2 = conf.dims[0];
+                    n3 = conf.dims[1];
+                }
+                else{
+                    n1 = 1;
+                    n2 = 1;
+                    n3 = conf.dims[0];
+                }
+                auto average = QoZ::compute_average<double>(qoi_vals.data(), n1, n2, n3, conf.qoiRegionSize);
+                auto minmax = std::minmax_element(average.begin(),average.end());
+
+                min_qoi = *minmax.first;
+                max_qoi = *minmax.second;
+
+
+
+
+
             }
-            auto average = QoZ::compute_average<double>(qoi_vals.data(), n1, n2, n3, conf.qoiRegionSize);
-            auto minmax = std::minmax_element(average.begin(),average.end());
 
-            min_qoi = *minmax.first;
-            max_qoi = *minmax.second;
-
-
-
-
-
-        }
-
-        if (max_qoi == min_qoi){
-            max_qoi = 1.0;
-            min_qoi = 0.0;
-        }
-        //std::cout<<max_qoi << " "<<min_qoi<<" "<<conf.qoiEB << std::endl;
-        conf.qoiEB *= (max_qoi-min_qoi);
+            if (max_qoi == min_qoi){
+                max_qoi = 1.0;
+                min_qoi = 0.0;
+            }
+            //std::cout<<max_qoi << " "<<min_qoi<<" "<<conf.qoiEB << std::endl;
+            conf.qoiEB *= (max_qoi-min_qoi);
+        //}
         conf.qoiEBMode = QoZ::EB_ABS;
 
 
@@ -903,25 +912,25 @@ void QoI_tuning(QoZ::Config &conf, T *data){
                     if (conf.QoZ == 0)
                         rate = std::min(2.0,rate);
                     else
-                        rate = std::min(4.0,rate);
+                        rate = std::min(3.0,rate);
                 }
                 else if(conf.qoiRegionSize <=16){//it is a random number. to Fix
                     if (conf.QoZ == 0)
                         rate = std::min(2.0,rate);
                     else
-                        rate = std::min(6.0,rate);
+                        rate = std::min(4.0,rate);
                 }
                 else if(conf.qoiRegionSize <=32){//it is a random number. to Fix
                     if (conf.QoZ == 0)
                         rate = std::min(3.0,rate);
                     else
-                        rate = std::min(8.0,rate);
+                        rate = std::min(6.0,rate);
                 }
                 else {
                     if (conf.QoZ == 0)
                         rate = std::min(4.0,rate);
                     else
-                        rate = std::min(16.0,rate);
+                        rate = std::min(8.0,rate);
                 }
                 //else if 
             }
@@ -2847,9 +2856,12 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
         conf = lorenzo_config;
         conf.qoi = ori_qoi;
 
+        if ((conf.qoi == 11) or (conf.qoi == 14 and conf.qoi_string == "x")){
+            conf.use_global_eb = true;
+        }
         
         //std::cout<<"Max eb: "<<*std::max_element(conf.ebs.begin(),conf.ebs.end());
-        if(conf.qoi>0 and sampling_num != conf.num){
+        else if(conf.qoi>0 and sampling_num != conf.num){
             conf.ebs = QoZ::sampling<double, N>(ebs.data(), conf.dims, sampling_num, sample_dims, sampling_block);  
             //conf.ebs = std::move(ebs);  
             auto old_dims=conf.dims;
@@ -2921,7 +2933,7 @@ char *SZ_compress_Interp_lorenzo(QoZ::Config &conf, T *data, size_t &outSize) {
         }
         if(!conf.use_global_eb)
             conf.ebs = std::move(ebs);
-        conf.qoi = ori_qoi;
+        //conf.qoi = ori_qoi;
         double tuning_time = timer.stop();
         if(conf.verbose){
             std::cout << "Tuning time = " << tuning_time << "s" << std::endl;
