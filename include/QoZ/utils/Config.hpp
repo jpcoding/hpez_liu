@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <vector>
+#include <sstream>
 #include <numeric>
 //#include <memory>
 #include <cstdlib>
@@ -274,6 +275,23 @@ namespace QoZ {
             qoiQuantbinCnt = cfg.GetInteger("QoISettings", "qoiQuantbinCnt", qoiQuantbinCnt);
             qoiRegionSize = cfg.GetInteger("QoISettings", "qoiRegionSize", qoiRegionSize);
             qoiIsoNum = cfg.GetInteger("QoISettings", "qoiIsoNum", qoiIsoNum);
+            // explicit isovalues for isoline QoI (qoi=4), comma-separated, e.g. isovalues=0 or isovalues=-100,0,250
+            {
+                std::string isostr = cfg.Get("QoISettings", "isovalues", "");
+                if(!isostr.empty()){
+                    isovalues.clear();
+                    std::stringstream ss(isostr);
+                    std::string tok;
+                    while(std::getline(ss, tok, ',')){
+                        // trim whitespace
+                        size_t b = tok.find_first_not_of(" \t");
+                        size_t e = tok.find_last_not_of(" \t");
+                        if(b == std::string::npos) continue;
+                        isovalues.push_back(std::stod(tok.substr(b, e - b + 1)));
+                    }
+                    qoiIsoNum = isovalues.size();
+                }
+            }
             quantile = cfg.GetReal("QoISettings", "quantile", quantile);
             max_quantile_rate = cfg.GetReal("QoISettings", "max_quantile_rate", max_quantile_rate);
             auto qoistring_c = cfg.Get("QoISettings", "qoi_string", qoi_string);

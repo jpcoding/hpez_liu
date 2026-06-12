@@ -89,11 +89,13 @@ namespace QoZ {
                 // return std::make_shared<SZ::QoI_RegionalAverage<T, N>>(conf.qoiEB, conf.absErrorBound);
             }
             case 4:{
+            	// isoline: use the isovalues set via config (QoISettings isovalues=...); default to {0}
             	std::vector<T> values;
             	for(int i=0; i<conf.isovalues.size(); i++){
             		values.push_back(conf.isovalues[i]);
             	}
-                return std::make_shared<QoZ::QoI_Isoline<T, N>>(conf.dims, values, conf.absErrorBound);            	
+            	if(values.empty()) values.push_back((T)0);
+                return std::make_shared<QoZ::QoI_Isoline<T, N>>(conf.dims, values, conf.absErrorBound);
             }
             case 5:{
             	// x^2 + log x
