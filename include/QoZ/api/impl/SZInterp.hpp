@@ -1628,10 +1628,27 @@ double Tuning(QoZ::Config &conf, T *data){
     }
    
 
-    if(conf.QoZ>0){
-        
+    // ---------------------------------------------------------------------
+    // conf.QoZ (set by the CLI flag -q) selects which "version" of the
+    // compressor we run. The levels are cumulative: each higher level keeps
+    // everything from the levels below and turns on additional features.
+    //
+    //   QoZ == 0 : plain SZ3.1 — none of the blocks below run, so no QoZ/HPEZ
+    //              feature is enabled (baseline interpolation + tuning only).
+    //   QoZ >= 1 : QoZ1  — anchor-point-based level-wise interpolation tuning
+    //              (profiling + auto/predictor tuning + level-wise selection).
+    //   QoZ >= 2 : HPEZ L2 — adds multi-dim interp, natural cubic spline,
+    //              full-adjacent interp re-ordering, and dynamic dim freezing.
+    //   QoZ >= 3 : HPEZ L3 — adds dynamic dimension weights.
+    //   QoZ >= 4 : HPEZ L4 — adds cross-block + block-wise interpolation tuning.
+    //
+    // So "QoZ 0 is SZ3": with -q 0 this whole block is skipped and the result
+    // is the stock SZ3.1 algorithm.
+    // ---------------------------------------------------------------------
+    if(conf.QoZ>0){ // QoZ >= 1: QoZ1 base features (skipped entirely when QoZ==0 / SZ3.1)
+
         //testLorenzo?
-        
+
 
         //activate
         //conf.testLorenzo=0;//temp deactivated Lorenzo. need further revision
@@ -1646,26 +1663,26 @@ double Tuning(QoZ::Config &conf, T *data){
         }
         if (conf.levelwisePredictionSelection<=0)
             conf.levelwisePredictionSelection = (N<=2?5:4);
-        
 
-        if(conf.QoZ>=2){
+
+        if(conf.QoZ>=2){ // HPEZ L2: multi-dim interp, natural spline, adjacent interp, dim freezing
             //conf.testLorenzo=1;
             conf.multiDimInterp=1;
             conf.naturalSpline=1;
             conf.fullAdjacentInterp=1;
             conf.freezeDimTest=1;
-            
+
         }
-        if(conf.QoZ>=3){
+        if(conf.QoZ>=3){ // HPEZ L3: dynamic dimension weights
             conf.dynamicDimCoeff=1;
         }
-        if(conf.QoZ>=4){
+        if(conf.QoZ>=4){ // HPEZ L4: cross-block + block-wise interpolation tuning
             conf.crossBlock=1;
             conf.blockwiseTuning=1;
             if(conf.blockwiseSampleRate<1.0)
                 conf.blockwiseSampleRate=3.0;
         }
-    }   
+    }
     //Deactivate several features when dim not fit
     if(N!=2 and N!=3){
        // conf.QoZ=0; comment it for level-wise eb
