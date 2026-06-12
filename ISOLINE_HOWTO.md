@@ -224,7 +224,7 @@ for name, f in [('SZ3','Pf48.sz3.out'), ('QoZ','Pf48.qoz.out'), ('SPERR','Pf48.s
 
 ## 6. Results (REL 0.001 ≡ abs bound 6.6361)
 
-| Compressor | Compression ratio | PSNR (dB) | Max abs err | Zero-crossing violations |
+| Compressor | Compression ratio | PSNR | Max abs err | Zero-crossing violations |
 |---|---|---|---|---|
 | SZ3 `qoi_error_control` | 65.5 | 72.6 | 4.0  | **0 / 25,000,000** |
 | QoZ `HPEZ-QoZ2.0` (`-q 0`) | 95.5 | 69.2 | 6.6  | **0 / 25,000,000** |
