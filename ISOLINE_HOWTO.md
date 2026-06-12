@@ -230,18 +230,7 @@ for name, f in [('SZ3','Pf48.sz3.out'), ('QoZ','Pf48.qoz.out'), ('SPERR','Pf48.s
 | QoZ `HPEZ-QoZ2.0` (`-q 0`) | 95.5 | 69.2 | 6.6  | **0 / 25,000,000** |
 | SPERR `qoi_isoline` (`--pwe 6.6361`) | 87.2 | 76.7 | 6.6  | **0 / 25,000,000** |
 
-All three preserve the zero isoline perfectly. The CR/PSNR differences come from
-the surrounding framework (each tool's eb auto-tuning settles on a different
-effective bound), **not** from the isoline logic, which is the same algorithm in
-each. SPERR enforces the isoline through its outlier-correction path; SZ3/QoZ
-through their QoI quantizer.
-
 ### QoZ level sweep (`-q 0…4`, REL 0.001)
-
-The QoZ row above uses `-q 0` (SZ3.1). Sweeping the level (see §2 for the
-mapping) shows the isoline guarantee is **independent of the level** — it's
-enforced by the QoI quantizer, not the interpolation tuning — while the
-rate–distortion tradeoff shifts:
 
 | `-q` | Level | CR | PSNR | Max abs err | Zero-crossing violations |
 |---|---|---|---|---|---|
@@ -250,10 +239,3 @@ rate–distortion tradeoff shifts:
 | 2 | HPEZ-L2 | 69.1 | 71.1 | 6.64 | **0 / 25,000,000** |
 | 3 | HPEZ-L3 | 69.1 | 71.1 | 6.64 | **0 / 25,000,000** |
 | 4 | HPEZ-L4 | 90.5 | 71.2 | 6.64 | **0 / 25,000,000** |
-
-`-q 0` gives the highest CR at the lowest PSNR; the HPEZ levels spend bits to
-raise PSNR at somewhat lower CR. (`-q 2` and `-q 3` are identical on this field —
-HPEZ-L3's dynamic dimension weights had no effect here.)
-
-Data composition: 92.6% > 0, 7.0% < 0, 0.4% exactly 0 — so the zero isoline is
-physically meaningful for this field.
