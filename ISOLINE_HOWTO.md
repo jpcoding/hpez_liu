@@ -12,6 +12,8 @@ algorithm in all three (`Isoline.hpp`); only the surrounding framework differs:
 
 - **SZ3** (`szcompressor/SZ3@qoi_error_control`) and **QoZ** (`HPEZ-QoZ2.0`)
   enforce it through their QoI quantizer.
+
+
 - **SPERR** (`jpcoding/SPERR@qoi_isoline`) — isoline ported in for this work —
   enforces it through SPERR's existing per-point **outlier-correction** path
   (the QoI is given a `<T>`-only interface, no spatial `N`).
@@ -157,7 +159,7 @@ qoiIsoNum=1
 [QoISettings]
 qoi=4
 qoiEB=1e-2
-isovalues=0
+isovalues=
 ```
 
 SPERR uses no config file — everything is on the command line (see §4).
@@ -190,7 +192,7 @@ SPERR has no relative mode — only `--pwe` (absolute point-wise error). To matc
 ```bash
 # SPERR (--pwe = 0.001 * 6636.14 = 6.6361, computed externally)
 SPERR_qoi/build/bin/sperr3d -c --ftype 32 --dims 500 500 100 \
-    --pwe 6.6361 --qoi_id 4 --qoi_tol 1e-2 --qoi_isovalues 0 \
+    --pwe 6.6361 --qoi_id 4 --qoi_tol 1e-2 --qoi_isovalues -100,0,250 \
     --bitstream Pf48.sperr.stream --decomp_f Pf48.sperr.out --print_stats $DATA
 ```
 
@@ -239,3 +241,28 @@ for name, f in [('SZ3','Pf48.sz3.out'), ('QoZ','Pf48.qoz.out'), ('SPERR','Pf48.s
 | 2 | HPEZ-L2 | 69.1 | 71.1 | 6.64 | **0 / 25,000,000** |
 | 3 | HPEZ-L3 | 69.1 | 71.1 | 6.64 | **0 / 25,000,000** |
 | 4 | HPEZ-L4 | 90.5 | 71.2 | 6.64 | **0 / 25,000,000** |
+
+---
+
+## 7. Verify QoI with the built-in `qoi_val` tool (QoZ)
+
+`test/qoi_val.cpp` builds to `build/test/qoi_val`. It re-evaluates the QoI on
+both the original and the decompressed file and reports the QoI error — for the
+isoline (`qoi=4`) it confirms the isovalue is preserved (`Max qoi error = 0`).
+Unlike the `-a` stat printed during compression, this is a standalone check you
+can run on any pair of files.
+
+Give it the **same config** used for compression (so it picks up `qoi=4` and
+`isovalues=0`), the data type (`-f`), and the dims (`-3 nx ny nz`). `-i` is the
+original input, `-o` is the decompressed output:
+
+```bash
+DATA=/Users/pjiao/data/hurricane_100x500x500/Pf48.bin.f32
+
+build/test/qoi_val -f -3 500 500 100 -c iso_qoz.config -i $DATA -o Pf48.qoz.out
+```
+
+Look for `Max qoi error = 0` in the `QoI error info:` block to confirm the
+zero-isoline was preserved (this matches the zero-crossing-violations count from
+§5). The tool also prints QoI PSNR/NRMSE and, for 3D data, QoI Laplacian and
+gradient-length errors.
